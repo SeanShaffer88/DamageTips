@@ -226,11 +226,12 @@ local function PeriodicScalingLineText(stat, effect, output)
         FormatPowerGain(effect.coefficient * effect.ticks), effect.ticks)
 end
 
-local function ExpectedLineText(kind, rate, hit, crit, effect, target)
+local function ExpectedLineText(kind, rate, hit, crit, effect, target, modifiers)
     local value = FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], rate))
     local context, resistText = "equal-level PvE", ""
     if target and kind == "spell" then
-        context = string_format("target L%d%s", target.level, target.resistance and "" or ", level only")
+        local detail = target.resistance and "" or (modifiers and modifiers.targetAura and ", level + aura" or ", level only")
+        context = string_format("target L%d%s", target.level, detail)
         if target.resistance then
             resistText = string_format(", %s resist %.4g", target.resistClass, target.resistance)
         end
@@ -239,6 +240,9 @@ local function ExpectedLineText(kind, rate, hit, crit, effect, target)
         local period = effect.channel and (effect.channel .. " channel") or "full effect"
         local critText = crit and string_format("%.1f%% crit", crit) or "no crit rolls"
         if kind == "healing" then
+            if modifiers and modifiers.tickCrit then
+                critText = string_format("%.1f%% direct crit, %.1f%% tick crit", crit, modifiers.tickCrit)
+            end
             return string_format("Expected HPS (%s): %s (%s)", period, value, critText)
         end
         local hitUnit = effect.hitMode == "tick" and "hit per missile" or "hit"
@@ -865,11 +869,14 @@ local function AddPowerLines(tooltip, t, dmgColor)
         end
     end
     if t.expectedAmount then
-        local rate, hit, crit, target = Estimates.GetExpectedRate(model.expected, t.expectedAmount, t.expectedCycle,
+        local rate, hit, crit, target, modifiers = Estimates.GetExpectedRate(model.expected, t.expectedAmount, t.expectedCycle,
             model.periodic, t.tickTotal, model)
         if rate then
             local color = model.expected == "healing" and DB.healColor or dmgColor
-            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, model.periodic, target), color)
+            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, model.periodic, target, modifiers), color)
+            if modifiers then
+                AddStyledLine(tooltip, "Modifiers: " .. table_concat(modifiers.labels, ", "), color)
+            end
             added = true
         end
     end

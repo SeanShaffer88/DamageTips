@@ -10,6 +10,7 @@ local BANK_PLAYER = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBan
 local BANK_PET = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Pet) or 1
 local SCHOOL_INDEX = { holy = 2, fire = 3, nature = 4, frost = 5, shadow = 6, arcane = 7 }
 local MODELS = addon.SpellPowerModels
+local Modifiers = addon.SpellModifiers
 
 local function IsFinite(value)
     return not IsSecret(value) and type(value) == "number" and value > -math.huge and value < math.huge
@@ -341,9 +342,15 @@ function Estimates.GetExpectedRate(kind, amount, cycle, effect, tickTotal, model
         end
         hit = math.min(100, math.max(0, baseHit + hitBonus))
     end
-    local critFactor = 1 + bonus * (crit or 0) / 100
-    local direct = amount * (directCrit and critFactor or 1)
-    local ticks = (tickTotal or 0) * (tickCrit and critFactor or 1)
+    local directChance, directBonus, damageTaken, labels = crit, bonus, 1, nil
+    if model then
+        directChance, directBonus, damageTaken, labels = Modifiers.Get(model, crit, bonus,
+            directCrit and amount > 0 and hit > 0, kind == "spell" and hit > 0 and target)
+    end
+    local directFactor = 1 + directBonus * (directChance or 0) / 100
+    local tickFactor = 1 + bonus * (crit or 0) / 100
+    local direct = amount * (directCrit and directFactor or 1)
+    local ticks = (tickTotal or 0) * (tickCrit and tickFactor or 1)
     if target then
         if target.armorReduction then
             direct = direct * (1 - target.armorReduction)
@@ -355,7 +362,14 @@ function Estimates.GetExpectedRate(kind, amount, cycle, effect, tickTotal, model
     end
     -- An aura's application hit gates all damage. Independent missile hit
     -- rolls have the same aggregate expectation and no additional parent roll.
-    local rate = ((direct + ticks) / cycle) * (hit / 100)
-    if IsNonnegative(rate) then return rate, hit, crit, target end
+    local rate = ((direct + ticks) / cycle) * (hit / 100) * damageTaken
+    if IsNonnegative(rate) then
+        local modifiers = labels and {
+            labels = labels,
+            tickCrit = tickCrit and directChance ~= crit and crit or nil,
+            targetAura = damageTaken > 1,
+        }
+        return rate, hit, directChance, target, modifiers
+    end
     return nil
 end

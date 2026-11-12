@@ -10,8 +10,8 @@ local function AddRanks(model, ...)
     end
 end
 
-local function Damage(school, coefficient, expected)
-    return { school = school, spellPower = coefficient, expected = expected }
+local function Damage(school, coefficient, expected, modifier)
+    return { school = school, spellPower = coefficient, expected = expected, critModifier = modifier }
 end
 
 local function Healing(coefficient)
@@ -19,16 +19,16 @@ local function Healing(coefficient)
 end
 
 -- Fire Blast
-AddRanks(Damage("fire", 0.429, "spell"), 2136, 2137, 2138, 8412, 8413, 10197, 10199)
+AddRanks(Damage("fire", 0.429, "spell", "combustion"), 2136, 2137, 2138, 8412, 8413, 10197, 10199)
 -- Lightning Bolt
-AddRanks(Damage("nature", 0.429, "spell"), 403)
-AddRanks(Damage("nature", 0.571, "spell"), 529)
-AddRanks(Damage("nature", 0.714, "spell"), 548, 915, 943, 6041, 10391, 10392, 15207, 15208)
+AddRanks(Damage("nature", 0.429, "spell", "callOfThunder"), 403)
+AddRanks(Damage("nature", 0.571, "spell", "callOfThunder"), 529)
+AddRanks(Damage("nature", 0.714, "spell", "callOfThunder"), 548, 915, 943, 6041, 10391, 10392, 15207, 15208)
 -- Shadow Bolt
-AddRanks(Damage("shadow", 0.486, "spell"), 686)
-AddRanks(Damage("shadow", 0.629, "spell"), 695)
-AddRanks(Damage("shadow", 0.800, "spell"), 705)
-AddRanks(Damage("shadow", 0.857, "spell"), 1088, 1106, 7641, 11659, 11660, 11661, 25307)
+AddRanks(Damage("shadow", 0.486, "spell", "ruin"), 686)
+AddRanks(Damage("shadow", 0.629, "spell", "ruin"), 695)
+AddRanks(Damage("shadow", 0.800, "spell", "ruin"), 705)
+AddRanks(Damage("shadow", 0.857, "spell", "ruin"), 1088, 1106, 7641, 11659, 11660, 11661, 25307)
 -- Wrath and Starfire
 AddRanks(Damage("nature", 0.429, "spell"), 5176)
 AddRanks(Damage("nature", 0.486, "spell"), 5177)
@@ -60,6 +60,7 @@ local function Periodic(grammar, school, ticks, interval, coefficient, options)
     local model = {
         school = school,
         expected = healing and "healing" or "spell",
+        critModifier = options.critModifier,
         periodic = {
             grammar = grammar, ticks = ticks, interval = interval, duration = ticks * interval,
             coefficient = coefficient, tickCrit = options.tickCrit ~= false,
@@ -85,7 +86,7 @@ AddRanks(Periodic("corruption", "shadow", 6, 3, 0.200), 6223, 7648, 11671, 11672
 AddRanks(Periodic("pain", "shadow", 6, 3, 0.200), 589, 594, 970, 992, 2767, 10892, 10893, 10894)
 AddRanks(Periodic("rejuvenation", nil, 4, 3, 0.200), 774, 1058, 1430, 2090, 2091, 3627, 8910, 9839, 9840, 9841, 25299)
 AddRanks(Periodic("renew", nil, 5, 3, 0.200), 139, 6074, 6075, 6076, 6077, 6078, 10927, 10928, 10929, 25315)
-AddRanks(Periodic("regrowth", nil, 7, 3, 0.071, { directPower = 0.286, directCrit = true }),
+AddRanks(Periodic("regrowth", nil, 7, 3, 0.071, { directPower = 0.286, directCrit = true, critModifier = "regrowth" }),
     8936, 8938, 8939, 8940, 8941, 9750, 9856, 9857, 9858)
 local moonfire = { directPower = 0.150, directCrit = true }
 AddRanks(Periodic("burn", "arcane", 3, 3, 0.130, moonfire), 8921)

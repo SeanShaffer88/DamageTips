@@ -1,3 +1,8 @@
+1.5.0-alpha.5
+- Expected output accounts for supported spell-specific talents, Fire
+  Blast's active Combustion stacks, and an eligible target's Curse of the
+  Elements. A tooltip line lists the modifiers used in the estimate.
+
 1.5.0-alpha.4
 - Expected DPS uses eligible live PvE target levels and readable school
   resistance. The tooltip distinguishes level-only and equal-level estimates.

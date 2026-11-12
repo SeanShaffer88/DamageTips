@@ -24,6 +24,15 @@ References
     with aura intervals from SpellEffect. Arcane Missiles uses the child
     effect coefficient for each triggered missile:
     https://wago.tools/db2/SpellDuration/csv?build=1.60.1.70888
+    Talent ranks, spell-specific crit effects, and aura stack or damage-taken
+    coefficients were checked against these exact-build tables:
+    https://wago.tools/db2/TraitDefinition/csv?build=1.60.1.70888
+    https://wago.tools/db2/TraitDefinitionEffectPoints/csv?build=1.60.1.70888
+    https://wago.tools/db2/TraitNode/csv?build=1.60.1.70888
+    https://wago.tools/db2/TraitNodeEntry/csv?build=1.60.1.70888
+    https://wago.tools/db2/TraitNodeXTraitNodeEntry/csv?build=1.60.1.70888
+    https://wago.tools/db2/CurvePoint/csv?build=1.60.1.70888
+    https://wago.tools/db2/SpellAuraOptions/csv?build=1.60.1.70888
     Bloodthirst uses the attack power percentage from its Spell description
     and matching SpellEffect base points. Arcane Shot and Serpent Sting coefficients come
     from Blizzard's November 2 Forever beta development notes:
@@ -54,6 +63,9 @@ References
     https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/priest/renew.go
     https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/mage/arcane_missiles.go
     https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/mage/fireball.go
+    Combustion crit stack identity and Ruin crit damage reference:
+    https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/mage/combustion.go
+    https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/warlock/talents_destruction.go
   - Warcraft Wiki (warcraft.wiki.gg): API documentation, Patch 1.60.1 API
     changes and notes, Patch 12.0.0 secret-value documentation.
 

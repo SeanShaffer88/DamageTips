@@ -84,9 +84,19 @@ Notes
   hit model starts at 96% and adds sheet hit modifiers, bounded to 0–100%.
   Spell crit is modeled at 1.5x, melee crit at 2x, and direct heals are
   assumed to land. Expected HPS represents raw healing before overheal.
-  These estimates use sheet stats and fixed crit bonuses. Spell-specific
-  talents, procs, auras, spell piercing and avoidance are outside the
-  model. Bloodthirst derives its amount from the live AP formula.
+  These estimates start from sheet stats and standard crit bonuses.
+  Bloodthirst derives its amount from the live AP formula.
+* Supported spell-specific modifiers are Call of Thunder for Lightning
+  Bolt (+5 percentage points to crit), Ruin for Shadow Bolt (up to 2x
+  crit damage), Improved Regrowth for direct Regrowth healing (+10 points
+  per rank), and active Combustion for Fire Blast (+10 points per stack).
+  Regrowth tick crit keeps the sheet chance. The estimate uses readable
+  committed talents and the current aura snapshot. Other talents, procs,
+  auras, spell piercing and avoidance are outside this model.
+* For eligible PvE spell DPS, the strongest readable Curse of the Elements
+  rank adds 4–10% damage taken. Its resistance reduction is accounted for
+  through the client effective-resistance value when available. The
+  modifier line lists the effects used in the estimate.
 * For damage spells, Expected DPS checks the current target during tooltip
   refresh. Target level adjusts spell hit for attackable, living PvE
   targets within three effective levels of the player. The target label

@@ -21,6 +21,7 @@ spellbook and see:
   - Power scaling and expected DPS/HPS: selected direct, periodic and channeled
     Forever spell ranks (optional)
   - Expected DPS can account for a readable PvE target's level and mitigation
+  - Expected output includes selected readable talents, buffs and debuffs
 
 Spells with a damage range use the average; spells with a direct hit plus a
 damage-over-time effect count both (the DoT can be excluded in settings).
