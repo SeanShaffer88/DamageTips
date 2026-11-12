@@ -1,0 +1,21 @@
+DamageTips - credits
+====================
+Author:      Malikor
+Licence:     GPL-3.0-or-later (LICENSE.txt; licence text (c) Free Software
+             Foundation)
+
+Development assistance: Claude (Anthropic)
+
+References
+  - Warcraft Wiki (warcraft.wiki.gg): API documentation, Patch 1.60.1 API
+    changes and notes, Patch 12.0.0 secret-value documentation.
+
+Artwork
+  - Icon (Media/icon.tga) and logo (Media/logo.png): created for DamageTips.
+  - Logo text set in DejaVu Sans (DejaVu Fonts, free licence).
+
+Development tools (not shipped): Lua 5.1 runtime via the lupa Python package,
+used to run the test suite.
+
+World of Warcraft and Blizzard Entertainment are trademarks of Blizzard
+Entertainment, Inc. This addon is not affiliated with or endorsed by Blizzard.

@@ -1,0 +1,31 @@
+DamageTips
+==========
+
+One-line description
+--------------------
+DPS, DPM, healing output and mana cost % on your action bar and spellbook spell tooltips.
+
+Long description
+----------------
+DamageTips adds the numbers you actually compare spells with to the tooltips
+you already hover over. Point at a spell on your action bar or in your
+spellbook and see:
+
+  - DPS: average damage per second, based on cast time, the spell's global
+    cooldown, its cooldown and damage-over-time duration
+  - DPM: damage per minute
+  - Damage per mana: how much damage each point of mana buys (optional)
+  - Mana cost: as a percentage of your max mana, an amount, or both
+
+Spells with a damage range use the average; spells with a direct hit plus a
+damage-over-time effect count both (the DoT can be excluded in settings).
+
+Customisable: choose which lines show and where, decimals, thousands
+separators, colours, font size and outline - with a live preview. Open it with
+/damagetips or from the minimap addon list.
+
+Built for the World of Warcraft: Forever beta (Interface 16001). Follows the
+client's secret-value rules, requests spell data it has not loaded yet, and
+validates its saved settings. English client only for now.
+
+Free software, GPL-3.0-or-later. Author: Malikor.

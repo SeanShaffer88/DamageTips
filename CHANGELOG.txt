@@ -1,0 +1,98 @@
+1.4.0
+- Feature release. Settings window redesigned into tabs
+  (Lines / Calculation / Format / Advanced) to hold the new options.
+  Includes everything from the 1.3.1 compatibility pass below.
+- Healing support: healing spells now show HPS / HPM (same divisor rules as
+  DPS), a Healing per mana line (with the per-mana option), and an Absorbs
+  line for shield spells. Green "Healing lines" colour in settings.
+- Damage range line (opt-in): "Damage: 59-65 (avg 62)".
+- Damage per cast line (opt-in): average damage per button press.
+- School tint (opt-in): the damage lines are tinted by the school parsed
+  from the spell text (Frost, Fire, Shadow, Holy, Nature, Arcane, Physical).
+- Next rank comparison (opt-in): "Next rank: DPS x (+y%)" when a higher rank
+  of the spell is in your spellbook. The rank index rebuilds when your
+  spellbook changes.
+- Hold Shift breakdown: with the option on, holding Shift while hovering
+  expands how each number was computed (direct range, DoT, divisor, school).
+- Per-spell rules: /damagetips hide <spell> hides a spell's lines;
+  /damagetips setdmg <spell> <avg> pins its average damage for spells the
+  text parser reads wrong; /damagetips rules lists them. Managed from the
+  Advanced settings tab too.
+- Minimap button (draggable; click opens settings), alongside the existing
+  addon-compartment entry. /damagetips minimap toggles it.
+- Settings sharing: /damagetips export prints a settings string;
+  /damagetips import <string> (or the Advanced tab's import box) applies one.
+  Imported strings are fully validated before anything is applied.
+- Parse patterns now live in per-locale tables (DamageTipsPatterns), so a
+  translation file can register patterns for another client language
+  without touching the addon's code. English patterns ship as before.
+
+1.3.1
+- Checked against Forever beta build 1.60.1.70450; Interface remains 16001.
+  No breakage found: spell text parsing, mana cost, GCD/cooldown math and the
+  action bar / spellbook hooks are unaffected by the 70425/70450 changes
+  (group-wide buffs, racial reworks, new spells are all read live from the
+  client's own tooltip text).
+- The action bar hook is now guarded like the spellbook hook: a client that
+  ever removes GameTooltip.SetAction will no longer stop the addon loading.
+- The colour picker falls back to the legacy picker API on clients that lack
+  SetupColorPickerAndShow, instead of doing nothing.
+- /damagetips debug also prints the client version and build, to make issue
+  reports useful.
+
+1.3.0
+- Settings window redesigned (two columns, live preview built from the same text
+  code as the tooltip). New options:
+  * DPS and DPM are separate on/off lines (old "showDamage" setting migrates)
+  * Damage per mana line (opt-in)
+  * Show on action bars / spellbook, each on/off
+  * Include damage over time on/off
+  * Minimum time is the GCD on/off
+  * DPS decimals 0/1/2
+  * Mana cost as percent / amount / both
+  * Thousands separators
+  * Font outline none / outline / thick
+- /damagetips dpm toggle; entry in the addon compartment (minimap addon list)
+- Added DESCRIPTION.txt, AUDIT.txt and CREDITS.txt
+- Test suite: 114 stubbed-API checks under Lua 5.1 (not shipped)
+
+1.2.0
+- Removed legacy API paths (GetSpellInfo, GetSpellBookItemInfo, GetSpellBookItemName,
+  global GetSpellPowerCost, tooltip-text mana fallback, old colour-picker API).
+  Mainline APIs only: C_Spell, C_SpellBook, C_TooltipInfo
+- Spellbook: accepts Enum bank or legacy "spell"/"pet" argument
+- Async spell data: C_Spell.RequestLoadSpellData + SPELL_DATA_LOAD_RESULT. Lines are
+  appended once data arrives; event is unregistered when nothing is pending
+- Result cache (1s TTL, recycled tables): Blizzard re-runs the tooltip setter while
+  the mouse rests on a button, so parsing no longer repeats on every refresh
+- No per-hover closures or string-key lookups; globals cached at file top
+- DPS now uses the spell's own GCD from GetSpellBaseCooldown (1.5s only as fallback)
+- Tooltip line fonts are restored from the original font object, not a fixed one
+- SavedVariables validated on load (types, font size 8-20, colour 0-1, bad tables)
+- Config window: colour dragging no longer rebuilds the whole window; slider falls
+  back to a minimal slider if OptionsSliderTemplate is missing
+- Hook errors are caught and reported once per session
+
+1.1.3
+- Checked against Forever beta build 1.60.1.70374; Interface remains 16001
+- Author is now Malikor; licence changed from MIT to GPLv3
+- Added a logo (Media/logo.png)
+- README: documented the _classic_beta_ install location and secret-value behaviour
+
+1.1.2
+- Fixed Lua error on 12.0-based clients: tooltip text is now a protected "secret value",
+  so spell text is read from C_TooltipInfo / spell description data instead
+- Added guards so secret values are skipped instead of causing errors
+- Added thousands-separator handling when reading damage numbers
+
+1.1.1
+- /damagetips now opens the settings window directly (/damagetips help lists commands)
+
+1.1.0
+- Added /damagetips config settings window: show/hide DPS/DPM and mana %,
+  per-line colour pickers, font size slider, live preview, reset button
+
+1.0.0
+- Added DPS, DPM and mana cost % to action bar and spellbook tooltips
+- Added settings saved between sessions, toggled via /damagetips
+- Added addon list icon

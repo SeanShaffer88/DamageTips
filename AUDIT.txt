@@ -1,0 +1,87 @@
+DamageTips - audit
+==================
+Addendum (2026-10-20, third-party check for 1.4.0)
+--------------------------------------------------
+Feature release on top of the 1.3.1 pass: healing/absorb parsing, damage
+range and per-cast lines, school tinting, next-rank comparison (spellbook
+rank index, rebuilt on SPELLS_CHANGED), Shift breakdown, per-spell rules,
+minimap button, settings export/import (validated before apply, no code
+execution), per-locale parse-pattern tables, and a tabbed settings window.
+Cross-section helpers that are referenced before their definition point
+are forward-declared (the BuffRadar 1.2.0 lesson); a static scan for
+call-before-establish across the file is clean, as is the Lua 5.1 parse.
+NOT run inside the game: healing text patterns are best-effort English
+(matches "restores X to Y health", "X health", "X health over N sec");
+heals phrased without the word "health" show no line. Rank numbers are
+read from spellbook subNames ("Rank N"); spells without ranked subNames
+simply show no next-rank line.
+
+Addendum (2026-10-20, third-party check for 1.3.1)
+--------------------------------------------------
+Re-checked against beta build 1.60.1.70450 (Interface 16001): no API changes
+affect this addon. Three hardening changes shipped in 1.3.1, all guarded:
+GameTooltip.SetAction existence check before hooksecurefunc; legacy
+ColorPickerFrame fallback path; /damagetips debug prints client version+build.
+Lua 5.1 parse clean. Nothing else touched.
+
+Version audited: 1.3.0 (code review first run on 1.1.2 -> fixes shipped in 1.2.0)
+Target: World of Warcraft: Forever beta, Interface 16001, build 1.60.1.70374
+Date: 2026-10-16
+Method: manual code review, API check against Warcraft Wiki, stubbed-API test
+suite under a real Lua 5.1 runtime, mutation checks. NOT run inside the game.
+
+1. Client architecture / API
+   [fixed]  Legacy globals removed: GetSpellInfo, GetSpellBookItemInfo,
+            GetSpellBookItemName, global GetSpellPowerCost, old colour-picker
+            API, tooltip-text mana fallback. Mainline APIs only.
+   [fixed]  FontString:GetText() replaced by C_TooltipInfo.GetSpellByID data
+            (GetText always returns secrets on this client family).
+   [fixed]  Every game value guarded with issecretvalue before use.
+   [fixed]  Async data: C_Spell.RequestLoadSpellData + SPELL_DATA_LOAD_RESULT,
+            one request per spell, event unregistered when nothing is pending.
+   [fixed]  Spellbook hook accepts Enum bank or legacy "spell"/"pet" string.
+   [n/a]    C_Item / C_Container / C_Timer: not used by this addon.
+   [n/a]    Combat lockdown: no protected functions are called, so no
+            InCombatLockdown deferral is needed.
+   [kept]   GetSpellBaseCooldown global: documented as present in retail 12.1.5.
+
+2. Memory / GC
+   [fixed]  Per-hover closures removed (static pcall targets).
+   [fixed]  Result cache with recycled entry tables (1 s TTL); Blizzard re-runs
+            the tooltip setter while hovering.
+   [fixed]  Scratch table reused for spell text; line lookups cached.
+   [fixed]  Globals cached as locals at the top of the file.
+   [known]  C_Spell.GetSpellInfo allocates one table per cache miss; no
+            allocation-free API exists for cast time.
+
+3. Frame / render loop
+   [n/a]    No OnUpdate handlers, no combat-log events.
+   [fixed]  Colour dragging updates colours only (no full window rebuild).
+   [fixed]  Slider no longer re-triggers itself on SetValue.
+
+4. Events / state
+   [ok]     ADDON_LOADED unregistered after init.
+   [fixed]  SavedVariables validated: types, enum ranges, font size 8-20,
+            colours 0-1, non-table data; 1.2 -> 1.3 migration of showDamage.
+   [fixed]  Hook errors caught and reported once per session.
+
+5. Lua 5.1
+   [ok]     Syntax checked with loadstring on Lua 5.1; static scan finds no
+            goto, labels, bitwise operators, _ENV, // or table.unpack.
+
+Tests (not shipped): 114 checks - tooltip output and arithmetic, cache and TTL,
+secret values, async load, spellbook banks, every option, preview, reset,
+settings sanitising/migration, error containment. Two mutations (secret guard
+removed, cache disabled) were each caught by the suite.
+
+Unverified in the real client
+   - GameTooltip:SetSpellBookItem is what Forever's spellbook buttons call.
+   - GetMacroSpell exists (guarded; macro buttons are skipped if not).
+   - Spell descriptions stay readable in every combat/instance context.
+   - ## AddonCompartmentFunc is honoured on Forever.
+   - OptionsSliderTemplate exists (a fallback slider is built if not).
+   - The 1 s cache lifetime suits Forever's tooltip refresh rate.
+
+Known limitations
+   - English text parsing only.
+   - Weapon-based and variable-damage spells may show no damage line.
