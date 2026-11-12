@@ -7,6 +7,11 @@ Licence:     GPL-3.0-or-later (LICENSE.txt; licence text (c) Free Software
 Development assistance: Claude (Anthropic)
 
 References
+  - SpellCalc by coolmodi, for mana sustain and caster stat concepts:
+    https://github.com/coolmodi/SpellCalc/tree/c6b53a7c07c90d7f7c261f8aa71b5a3e9d5ebd6c
+    DamageTips implements these features against the Forever client APIs.
+  - Blizzard's Forever UI API documentation, preserved by Gethe:
+    https://github.com/Gethe/wow-ui-source/tree/4cd0ab752a77164f654ccbca9d0c1fe8dafceebe/Interface/AddOns/Blizzard_APIDocumentationGenerated
   - Warcraft Wiki (warcraft.wiki.gg): API documentation, Patch 1.60.1 API
     changes and notes, Patch 12.0.0 secret-value documentation.
 

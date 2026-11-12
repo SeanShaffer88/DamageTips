@@ -14,19 +14,20 @@ Adds extra lines to spell tooltips on your action bars and in the spellbook:
   * Mana cost         as % of your max mana, as an amount, or both
 
 Optional lines: damage per cast, damage range, next-rank comparison,
-school-tinted damage lines, and a hold-Shift breakdown of the maths.
+school-tinted damage lines, a hold-Shift breakdown of the maths, mana
+sustain estimates, and caster spell stats.
 
 Time basis for DPS: the longest of cast time, the spell's global cooldown,
 its base cooldown and any damage-over-time duration.
 
-Built for World of Warcraft: Forever beta, Interface 16001
-(last checked against build 1.60.1.70450).
+Built for World of Warcraft: Forever, Interface 16001. API signatures for
+the estimates were checked against Blizzard's UI files for build
+1.60.1.70888. The alpha was verified with Lua mocks.
 
 Installation
 ------------
-Copy the DamageTips folder into your Forever client's Interface/AddOns/
-directory (for the beta this is the _classic_beta_ install) and restart the
-game, or /reload.
+Copy the DamageTips folder into _forever_/Interface/AddOns/ and restart
+the game, or /reload.
 
 Settings
 --------
@@ -36,7 +37,7 @@ between sessions.
 
   Lines          DPS, DPM, damage per cast, damage range, healing lines,
                  per-mana lines, mana cost, school tint, Shift breakdown;
-                 show on action bars / spellbook
+                 show on action bars / spellbook, mana sustain, caster stats
   Calculation    Include damage over time, GCD minimum, thousands separators,
                  next-rank comparison, DPS decimals, mana cost format
   Format         Colours (damage / healing / mana), font outline, font size,
@@ -51,6 +52,8 @@ Commands
 /damagetips dps     Toggle DPS
 /damagetips dpm     Toggle DPM
 /damagetips mana    Toggle the mana cost line
+/damagetips sustain Toggle the mana sustain estimate
+/damagetips caster  Toggle caster spell stats
 /damagetips healing Toggle the healing lines
 /damagetips minimap Toggle the minimap button
 /damagetips debug   Print the spell text the addon read (for troubleshooting)
@@ -64,6 +67,17 @@ Commands
 
 Notes
 -----
+* Mana sustain uses current mana, the spell's up-front cost, and casting
+  mana regeneration. It pays the first cast from your current pool and
+  applies steady regeneration between casts. Cadence follows the tooltip's
+  DPS/HPS timing settings and allows full enabled periodic effects to run.
+  Damage and healing estimates use the tooltip's average amounts. Actual
+  results vary with casting cadence, mana procs, refunds, and regen ticks.
+  The estimate needs readable data for a known player spell with one
+  unconditional mana cost and no optional or recurring cost.
+* Caster spell stats show character spell crit, spell power for a recognized
+  damage school, and bonus healing for a healing spell when available. They
+  describe the caster and leave the tooltip's damage and healing math intact.
 * Forever follows Midnight's "secret value" rules. DamageTips reads spell text
   from the game's tooltip data and skips anything the game marks as secret, so
   a spell may occasionally show no damage line while data is restricted.
@@ -71,8 +85,8 @@ Notes
   works on English clients only.
 * Spells without a flat damage number in their description (many weapon
   abilities) will not show damage lines.
-* Spell data that the client has not loaded yet is requested once; the lines
-  appear as soon as it arrives.
+* Spell data that the client has not loaded yet is requested once. The
+  lines appear when the data arrives or on the next tooltip refresh.
 
 More documents: CHANGELOG.txt, DESCRIPTION.txt, AUDIT.txt, CREDITS.txt
 World of Warcraft is a trademark of Blizzard Entertainment. This addon is not

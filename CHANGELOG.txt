@@ -1,3 +1,14 @@
+1.5.0-alpha.1
+- Added optional Mana sustain estimates for player spells with an up-front
+  mana cost. Shows affordable casts and estimated damage or healing before
+  low mana using current mana and casting regeneration.
+- Added optional Caster spell stats for applicable player spell tooltips.
+  Shows character spell crit, school spell power and bonus healing.
+- Enable either option in the Lines tab or with /damagetips sustain and
+  /damagetips caster. Both are off by default.
+- Fixed the settings window failing to open when registering its first
+  checkbox and the mana cost line appearing on spells marked hidden.
+
 1.4.0
 - Feature release. Settings window redesigned into tabs
   (Lines / Calculation / Format / Advanced) to hold the new options.

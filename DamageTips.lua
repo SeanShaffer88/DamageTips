@@ -8,7 +8,8 @@
     Slash commands: /damagetips (opens settings), /damagetips help
 ]]
 
-local ADDON_NAME = ...
+local ADDON_NAME, addon = ...
+local Estimates = addon.SpellEstimates
 
 ----------------------------------------------------------------------
 -- Cached globals (Lua 5.1: avoid repeated _G lookups in hover paths)
@@ -57,6 +58,8 @@ local DEFAULTS = {
     showMinimap   = true,   -- minimap button (addon compartment always available)
     showMana      = true,   -- mana cost line
     showDPMana    = false,  -- "Damage per mana: x" (opt-in)
+    showManaSustain = false,
+    showCasterStats = false,
     spellRules    = {},     -- per-spell overrides: spellID string -> "hide" | avg damage number
     healColor     = { 0.45, 0.85, 0.45 },
     showActionBar = true,   -- add lines to action bar tooltips
@@ -74,7 +77,8 @@ local DEFAULTS = {
 local BOOL_KEYS = { "showDPS", "showDPM", "showMana", "showDPMana", "showActionBar",
                     "showSpellbook", "includeDoT", "gcdFloor", "thousands",
                     "showHealing", "showRange", "showDPC", "schoolTint",
-                    "showNextRank", "shiftDetails", "showMinimap" }
+                    "showNextRank", "shiftDetails", "showMinimap",
+                    "showManaSustain", "showCasterStats" }
 local ENUMS = { dpsDecimals = { 0, 1, 2 }, manaMode = { 1, 2, 3 }, fontOutline = { 1, 2, 3 } }
 
 local PREFIX = "|cffffd100DamageTips|r: "
@@ -188,6 +192,22 @@ local function FormatNumber(str)
     return str
 end
 
+local function ManaSustainLineText(casts, netCost)
+    if casts == nil then return nil end
+    if casts == 0 then return "Mana sustain: not enough mana for one cast" end
+    if casts == false then return "Mana sustain: sustainable at this cadence" end
+    return string_format("Mana sustain: ~%s %s (%s net mana per cycle)",
+        FormatNumber(string_format("%.0f", casts)), casts == 1 and "cast" or "casts",
+        FormatNumber(string_format("%.2f", netCost)))
+end
+
+local function OutputBeforeLowManaText(casts, average, label)
+    if not casts or casts <= 0 or not average or average <= 0 then return nil end
+    local total = casts * average
+    if total >= math.huge then return nil end
+    return string_format("Before low mana: ~%s %s", FormatNumber(string_format("%.0f", total)), label)
+end
+
 local function DamageLineText(dps)
     local a = DB.showDPS and ("DPS: " .. FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], dps))) or nil
     local b = DB.showDPM and ("DPM: " .. FormatNumber(string_format("%.0f", dps * 60))) or nil
@@ -257,7 +277,7 @@ local function BuildDetailLines(t)
     end
     if t.time then add(string_format("Divisor: %.2f sec", t.time)) end
     if t.school then add("School: " .. t.school:sub(1, 1):upper() .. t.school:sub(2)) end
-    if t.htotal and t.htotal > 0 then
+    if DB.showHealing and t.htotal and t.htotal > 0 then
         add("Healing: " .. FormatNumber(string_format("%.0f", t.htotal)))
         if t.hot and t.hot > 0 then
             add(string_format("Heal over time: %s over %s sec",
@@ -265,7 +285,7 @@ local function BuildDetailLines(t)
         end
         if t.htime then add(string_format("Heal divisor: %.2f sec", t.htime)) end
     end
-    if t.absorb and t.absorb > 0 then
+    if DB.showHealing and t.absorb and t.absorb > 0 then
         add("Absorb: " .. FormatNumber(string_format("%.0f", t.absorb)))
     end
     if #lines == 0 then return nil end
@@ -290,36 +310,25 @@ end
 ----------------------------------------------------------------------
 local function GetCastTime(spellID)
     if not (C_Spell and C_Spell.GetSpellInfo) then return 0 end
-    local info = C_Spell.GetSpellInfo(spellID)
-    local ms = info and info.castTime
+    local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
+    if not ok or IsSecret(info) or type(info) ~= "table" then return 0 end
+    local ms = info.castTime
     if IsSecret(ms) or type(ms) ~= "number" then return 0 end
-    return ms / 1000
+    return ms / 1000, ms >= 0 and ms < math.huge
 end
 
 -- Returns base cooldown and the spell's own GCD, in seconds.
 local function GetBaseTimings(spellID)
     if not GetSpellBaseCooldown then return 0, GCD_FALLBACK end
-    local cdMS, gcdMS = GetSpellBaseCooldown(spellID)
+    local ok, cdMS, gcdMS = pcall(GetSpellBaseCooldown, spellID)
+    if not ok then return 0, GCD_FALLBACK end
     local cd, gcd = 0, GCD_FALLBACK
-    if not IsSecret(cdMS) and type(cdMS) == "number" then cd = cdMS / 1000 end
-    if not IsSecret(gcdMS) and type(gcdMS) == "number" and gcdMS > 0 then gcd = gcdMS / 1000 end
-    return cd, gcd
-end
-
-local function GetManaCost(spellID)
-    if not (C_Spell and C_Spell.GetSpellPowerCost) then return nil end
-    local costs = C_Spell.GetSpellPowerCost(spellID)
-    if type(costs) ~= "table" then return nil end
-    for i = 1, #costs do
-        local c = costs[i]
-        local ptype = c.type
-        if not IsSecret(ptype) and ptype == MANA then
-            local cost = c.cost
-            if IsSecret(cost) or type(cost) ~= "number" then return nil end
-            return cost
-        end
-    end
-    return nil
+    local cdReadable = not IsSecret(cdMS) and type(cdMS) == "number"
+    local gcdReadable = not IsSecret(gcdMS) and type(gcdMS) == "number"
+    if cdReadable then cd = cdMS / 1000 end
+    if gcdReadable and gcdMS > 0 then gcd = gcdMS / 1000 end
+    return cd, gcd, cdReadable and gcdReadable and cdMS >= 0 and cdMS < math.huge
+        and gcdMS >= 0 and gcdMS < math.huge
 end
 
 -- Spell text comes from tooltip data, never from FontString:GetText()
@@ -332,15 +341,26 @@ local function GetSpellText(spellID)
 
     if C_TooltipInfo and C_TooltipInfo.GetSpellByID then
         local data = C_TooltipInfo.GetSpellByID(spellID)
-        local lines = data and data.lines
-        if lines then
-            for i = 1, #lines do
-                local t = lines[i].leftText
-                if IsSecret(t) then
-                    secret = true
-                elseif type(t) == "string" then
-                    n = n + 1
-                    parts[n] = t
+        if IsSecret(data) then
+            secret = true
+        elseif type(data) == "table" then
+            local lines = data.lines
+            if IsSecret(lines) then
+                secret = true
+            elseif type(lines) == "table" then
+                for i = 1, #lines do
+                    local line = lines[i]
+                    if IsSecret(line) then
+                        secret = true
+                    elseif type(line) == "table" then
+                        local t = line.leftText
+                        if IsSecret(t) then
+                            secret = true
+                        elseif type(t) == "string" then
+                            n = n + 1
+                            parts[n] = t
+                        end
+                    end
                 end
             end
         end
@@ -525,7 +545,7 @@ end
 ----------------------------------------------------------------------
 -- Async spell data (SPELL_DATA_LOAD_RESULT)
 ----------------------------------------------------------------------
-local cur = { spellID = nil, owner = nil, added = false } -- what GameTooltip shows now
+local cur = { added = false } -- spell ID, owner and source of the active tooltip
 local AddSpellInfo -- forward declaration
 
 local requestedOnce = {} -- spells we already asked the server about
@@ -565,7 +585,7 @@ dataFrame:SetScript("OnEvent", function(self, event, spellID)
     -- Tooltip still showing this spell without our lines: append them now.
     if cur.spellID == spellID and not cur.added
         and GameTooltip:IsShown() and GameTooltip:GetOwner() == cur.owner then
-        pcall(AddSpellInfo, GameTooltip, spellID)
+        pcall(AddSpellInfo, GameTooltip, spellID, cur.source)
     end
 end)
 
@@ -574,7 +594,7 @@ end)
 ----------------------------------------------------------------------
 -- Computes every number for a spell. `light` skips healing and next-rank
 -- (used when computing the next rank itself, to avoid chaining).
-local function Compute(spellID, light)
+local function Compute(spellID, light, estimate)
     local text, secret, loaded = GetSpellText(spellID)
     local t = { secret = secret, loaded = loaded }
     if not loaded and not secret then
@@ -582,15 +602,20 @@ local function Compute(spellID, light)
     end
     if DEBUG then Print("spell text: " .. (text ~= "" and text or "<none / secret>")) end
 
-    if DB.showMana or DB.showDPMana then t.cost = GetManaCost(spellID) end
-
     local rule = DB.spellRules and DB.spellRules[tostring(spellID)]
     if rule == "hide" then
         t.hidden = true
         return t
     end
 
-    if text ~= "" and (DB.showDPS or DB.showDPM or DB.showDPC or DB.showRange or DB.showDPMana) then
+    estimate = estimate and loaded and not secret
+    local wantsSustain = estimate and DB.showManaSustain
+    t.baselineDamage = DB.showDPS or DB.showDPM or DB.showDPC or DB.showRange or DB.showDPMana
+    if DB.showMana or DB.showDPMana or wantsSustain then
+        t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, wantsSustain)
+    end
+
+    if text ~= "" and (t.baselineDamage or estimate) then
         local direct, dot, dotDur, lo, hi, school
         if type(rule) == "number" then
             direct, lo, hi, school = rule, rule, rule, nil
@@ -601,31 +626,39 @@ local function Compute(spellID, light)
         if not DB.includeDoT then dot, dotDur = 0, nil end
         local total = direct + dot
         t.total, t.lo, t.hi, t.dot, t.dotDur, t.school = total, lo, hi, dot, dotDur, school
-        if total > 0 then
-            local cd, gcd = GetBaseTimings(spellID)
-            local tm = math_max(GetCastTime(spellID), cd, dotDur or 0)
-            if DB.gcdFloor then tm = math_max(tm, gcd) end
-            if tm <= 0 then tm = gcd end
-            t.time, t.dps = tm, total / tm
-        end
     end
 
-    if not light and DB.showHealing and text ~= "" then
+    if not light and (DB.showHealing or estimate) and text ~= "" then
         local noDot = text:gsub(P.dot, "") -- never read a DoT as a heal-over-time
         local hDirect, hLo, hHi, hot, hotDur, absorb = ParseHealing(noDot)
         if not DB.includeDoT then hot, hotDur = 0, nil end
         local htotal = hDirect + hot
         t.htotal, t.hLo, t.hHi, t.hot, t.hotDur, t.absorb = htotal, hLo, hHi, hot, hotDur, absorb
-        if htotal > 0 then
-            local cd, gcd = GetBaseTimings(spellID)
-            local tm = math_max(GetCastTime(spellID), cd, hotDur or 0)
-            if DB.gcdFloor then tm = math_max(tm, gcd) end
-            if tm <= 0 then tm = gcd end
-            t.htime, t.hps = tm, htotal / tm
+    end
+
+    local damageTiming = t.total and t.total > 0 and (t.baselineDamage or wantsSustain)
+    local healingTiming = t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
+    if damageTiming or healingTiming then
+        local cd, gcd, cooldownsReadable = GetBaseTimings(spellID)
+        local cast, castReadable = GetCastTime(spellID)
+        local baseTime = math_max(cast, cd)
+        if DB.gcdFloor then baseTime = math_max(baseTime, gcd) end
+        if damageTiming then
+            local time = math_max(baseTime, t.dotDur or 0)
+            t.time = time > 0 and time or gcd
+            t.dps = t.total / t.time
+        end
+        if healingTiming then
+            local time = math_max(baseTime, t.hotDur or 0)
+            t.htime = time > 0 and time or gcd
+            t.hps = t.htotal / t.htime
+        end
+        if wantsSustain and cooldownsReadable and castReadable then
+            t.sustainCycle = math_max(t.time or 0, t.htime or 0)
         end
     end
 
-    if not light and DB.showNextRank and t.dps and t.dps > 0 then
+    if not light and t.baselineDamage and DB.showNextRank and t.dps and t.dps > 0 then
         local nextID = NextRankSpellID(spellID)
         if nextID then
             local nt = Compute(nextID, true)
@@ -633,21 +666,21 @@ local function Compute(spellID, light)
         end
     end
 
-    return t
+    return t, estimate
 end
 
-local function BuildEntry(e, spellID, now)
+local function BuildEntry(e, spellID, now, estimate)
     e.dmgLine, e.dpcLine, e.rangeLine, e.effLine = false, false, false, false
     e.healLine, e.heffLine, e.absorbLine, e.nextLine, e.manaLine = false, false, false, false, false
     e.detailLines, e.schoolColor = nil, nil
     e.stamp = now
 
-    local t = Compute(spellID)
+    local t, readableEstimate = Compute(spellID, false, estimate)
     if t.requested then
         e.stamp = 0 -- data not loaded yet: do not cache this result
     end
 
-    if t.total and t.total > 0 then
+    if t.baselineDamage and t.total and t.total > 0 then
         if DB.showDPS or DB.showDPM then e.dmgLine = DamageLineText(t.dps) end
         e.dpcLine = DPCLineText(t.total)
         e.rangeLine = RangeLineText(t.lo, t.hi)
@@ -657,7 +690,7 @@ local function BuildEntry(e, spellID, now)
         e.detailLines = BuildDetailLines(t)
     end
 
-    if t.htotal and t.htotal > 0 then
+    if DB.showHealing and t.htotal and t.htotal > 0 then
         e.healLine = HealLineText(t.hps)
         e.heffLine = HealEffLineText(t.htotal, t.cost)
     end
@@ -671,20 +704,20 @@ local function BuildEntry(e, spellID, now)
         end
         e.manaLine = ManaLineText(t.cost, maxMana)
     end
+    if readableEstimate then return t end
 end
 
-local function GetEntry(spellID)
+local function GetEntry(spellID, estimate)
     local now = GetTime()
     local e = cache[spellID]
-    if e and (now - e.stamp) < CACHE_TTL then return e end
+    if not estimate and e and (now - e.stamp) < CACHE_TTL then return e end
 
     if not e then
         e = entryPool[#entryPool]
         if e then entryPool[#entryPool] = nil else e = {} end
         cache[spellID] = e
     end
-    BuildEntry(e, spellID, now)
-    return e
+    return e, BuildEntry(e, spellID, now, estimate)
 end
 
 ----------------------------------------------------------------------
@@ -721,12 +754,47 @@ GameTooltip:HookScript("OnTooltipCleared", function()
         styledLines[i], styledFonts[i] = nil, nil
     end
     styledCount = 0
-    cur.spellID, cur.owner, cur.added = nil, nil, false
+    cur.spellID, cur.owner, cur.source, cur.added = nil, nil, nil, false
 end)
 
-AddSpellInfo = function(tooltip, spellID)
+local function AddEstimateLines(tooltip, t, dmgColor)
+    local added = false
+    if t.fixedManaCost and t.sustainCycle then
+        local casts, netCost = Estimates.GetManaSustain(t.fixedManaCost, t.sustainCycle)
+        local mana = ManaSustainLineText(casts, netCost)
+        if mana then
+            AddStyledLine(tooltip, mana, DB.manaColor)
+            added = true
+        end
+        local damage = OutputBeforeLowManaText(casts, t.total, "damage")
+        if damage then AddStyledLine(tooltip, damage, dmgColor) end
+        local healing = OutputBeforeLowManaText(casts, t.htotal, "healing")
+        if healing then AddStyledLine(tooltip, healing, DB.healColor) end
+    end
+    if DB.showCasterStats then
+        local crit, power, healing = Estimates.GetCasterStats(t.school, t.htotal and t.htotal > 0)
+        if crit then
+            AddStyledLine(tooltip, string_format("Caster spell crit: %.1f%%", crit), dmgColor)
+            added = true
+        end
+        if power then
+            local school = t.school:sub(1, 1):upper() .. t.school:sub(2)
+            AddStyledLine(tooltip, school .. " spell power: " .. FormatNumber(string_format("%.0f", power)), dmgColor)
+            added = true
+        end
+        if healing then
+            AddStyledLine(tooltip, "Bonus healing: " .. FormatNumber(string_format("%.0f", healing)), DB.healColor)
+            added = true
+        end
+    end
+    return added
+end
+
+AddSpellInfo = function(tooltip, spellID, source)
     if not DB or not spellID then return end
-    local e = GetEntry(spellID)
+    local estimate = source and (DB.showManaSustain or DB.showCasterStats)
+        and Estimates.IsKnownPlayerSpell(spellID, source == ACTION)
+    local e, estimateData = GetEntry(spellID, estimate)
     local added = false
     local dmgColor = e.schoolColor or DB.damageColor
 
@@ -739,6 +807,7 @@ AddSpellInfo = function(tooltip, spellID)
     if e.heffLine then AddStyledLine(tooltip, e.heffLine, DB.healColor) added = true end
     if e.absorbLine then AddStyledLine(tooltip, e.absorbLine, DB.healColor) added = true end
     if e.manaLine then AddStyledLine(tooltip, e.manaLine, DB.manaColor) added = true end
+    if estimateData and AddEstimateLines(tooltip, estimateData, dmgColor) then added = true end
 
     if DB.shiftDetails and e.detailLines then
         local gray = { 0.65, 0.65, 0.65 }
@@ -775,29 +844,35 @@ end
 
 local function ResolveBookSpell(slot, bank)
     if not (C_SpellBook and C_SpellBook.GetSpellBookItemInfo) then return nil end
+    if IsSecret(bank) then return nil end
     if type(bank) == "string" then -- old-style "spell"/"pet" book type
         bank = (bank == "pet") and BANK_PET or BANK_PLAYER
     end
-    local info = C_SpellBook.GetSpellBookItemInfo(slot, bank or BANK_PLAYER)
-    local id = info and info.spellID
+    bank = bank or BANK_PLAYER
+    local info = C_SpellBook.GetSpellBookItemInfo(slot, bank)
+    if IsSecret(info) or type(info) ~= "table" then return nil end
+    local id = info.spellID
     if IsSecret(id) then return nil end
-    return id
+    return id, bank == BANK_PLAYER
 end
 
 local function OnTooltipHook(tooltip, kind, slot, arg)
     if not DB or IsSecret(slot) then return end
-    local spellID
+    local spellID, source
     if kind == ACTION then
         if not DB.showActionBar then return end
         spellID = ResolveActionSpell(slot)
+        source = ACTION
     else
         if not DB.showSpellbook then return end
-        spellID = ResolveBookSpell(slot, arg)
+        local isPlayerBook
+        spellID, isPlayerBook = ResolveBookSpell(slot, arg)
+        if isPlayerBook then source = BOOK end
     end
     if not spellID then return end
 
-    cur.spellID, cur.owner, cur.added = spellID, tooltip:GetOwner(), false
-    AddSpellInfo(tooltip, spellID)
+    cur.spellID, cur.owner, cur.source, cur.added = spellID, tooltip:GetOwner(), source, false
+    AddSpellInfo(tooltip, spellID, source)
 end
 
 local errorShown = false
@@ -951,6 +1026,8 @@ local function UpdateColors()
     for _, fs in ipairs(config.dmgPreviews) do fs:SetTextColor(d[1], d[2], d[3]) end
     for _, fs in ipairs(config.healPreviews) do fs:SetTextColor(h[1], h[2], h[3]) end
     config.previewMana:SetTextColor(m[1], m[2], m[3])
+    config.previewSustain:SetTextColor(m[1], m[2], m[3])
+    config.previewCaster:SetTextColor(d[1], d[2], d[3])
 end
 
 local function ApplyPreview(fs, text, path, size, flags)
@@ -975,6 +1052,8 @@ local function UpdatePreview()
     ApplyPreview(heal[2], HealEffLineText(402.5, SAMPLE_COST), path, size, flags)
     ApplyPreview(heal[3], AbsorbLineText(500), path, size, flags)
     ApplyPreview(config.previewMana, ManaLineText(SAMPLE_COST, SAMPLE_MAX), path, size, flags)
+    ApplyPreview(config.previewSustain, DB.showManaSustain and ManaSustainLineText(8, 15), path, size, flags)
+    ApplyPreview(config.previewCaster, DB.showCasterStats and "Caster spell crit: 12.5%", path, size, flags)
     config.sliderText:SetText("Font size: " .. DB.fontSize)
 end
 
@@ -1097,6 +1176,7 @@ local function CreateConfig()
         btn:SetScript("OnClick", function() SelectTab(key); RefreshConfig() end)
         f.tabBtns[key] = btn
         local panel = CreateFrame("Frame", nil, f)
+        panel.checks, panel.cycles = f.checks, f.cycles
         panel:SetPoint("TOPLEFT", 8, -72)
         panel:SetPoint("BOTTOMRIGHT", -8, 8)
         panel:Hide()
@@ -1121,6 +1201,9 @@ local function CreateConfig()
     MakeHeader(lines, "Show on", 330, -8)
     MakeCheck(lines, "Action bars", 330, -26, "showActionBar")
     MakeCheck(lines, "Spellbook", 330, -52, "showSpellbook")
+    MakeHeader(lines, "Spell estimates", 330, -92)
+    MakeCheck(lines, "Mana sustain estimate", 330, -112, "showManaSustain")
+    MakeCheck(lines, "Caster spell stats", 330, -138, "showCasterStats")
 
     ------------------------------------------------------------------
     -- Tab: Calculation
@@ -1182,6 +1265,10 @@ local function CreateConfig()
     for i = 1, 3 do previewLine(f.healPreviews, -140 - 5 * 20 - (i - 1) * 20) end
     f.previewMana = fmt:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     f.previewMana:SetPoint("TOPLEFT", 16, -140 - 8 * 20)
+    f.previewSustain = fmt:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    f.previewSustain:SetPoint("TOPLEFT", 16, -140 - 9 * 20)
+    f.previewCaster = fmt:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    f.previewCaster:SetPoint("TOPLEFT", 16, -140 - 10 * 20)
 
     ------------------------------------------------------------------
     -- Tab: Advanced
@@ -1457,6 +1544,8 @@ local function ShowHelp()
     print("  |cffffd100/damagetips dps|r - toggle DPS (" .. OnOff(DB.showDPS) .. ")")
     print("  |cffffd100/damagetips dpm|r - toggle DPM (" .. OnOff(DB.showDPM) .. ")")
     print("  |cffffd100/damagetips mana|r - toggle mana cost line (" .. OnOff(DB.showMana) .. ")")
+    print("  |cffffd100/damagetips sustain|r - toggle mana sustain (" .. OnOff(DB.showManaSustain) .. ")")
+    print("  |cffffd100/damagetips caster|r - toggle caster spell stats (" .. OnOff(DB.showCasterStats) .. ")")
     print("  |cffffd100/damagetips healing|r - toggle healing lines (" .. OnOff(DB.showHealing) .. ")")
     print("  |cffffd100/damagetips minimap|r - toggle the minimap button (" .. OnOff(DB.showMinimap) .. ")")
     print("  |cffffd100/damagetips debug|r - toggle debug output (" .. OnOff(DEBUG) .. ")")
@@ -1471,6 +1560,8 @@ local TOGGLES = {
     dps     = { key = "showDPS",     label = "DPS" },
     dpm     = { key = "showDPM",     label = "DPM" },
     mana    = { key = "showMana",    label = "mana cost line" },
+    sustain = { key = "showManaSustain", label = "mana sustain estimate" },
+    caster  = { key = "showCasterStats", label = "caster spell stats" },
     healing = { key = "showHealing", label = "healing lines" },
 }
 
