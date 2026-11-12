@@ -244,9 +244,61 @@ function Estimates.GetPeriodicAmounts(model, text)
     return directTotal, total
 end
 
--- Equal-level PvE spell hit approximation. Healing is assumed to land.
--- Melee uses sheet crit on landed hits, with no avoidance model.
-function Estimates.GetExpectedRate(kind, amount, cycle, effect, tickTotal)
+local LEVEL_MISS = { [-3] = 1, [-2] = 2, [-1] = 3, [0] = 4, [1] = 5, [2] = 6, [3] = 17 }
+local RESISTANCE_CLASS = { fire = "Fire", frost = "Frost", nature = "Nature", shadow = "Shadow", arcane = "Arcane" }
+
+local function CheckUnitFlag(getter, required, ...)
+    if not getter then return false end
+    local ok, flag = pcall(getter, ...)
+    return ok and not IsSecret(flag) and flag == required
+end
+
+local function ReadTargetLevels()
+    if not CheckUnitFlag(UnitExists, true, "target")
+        or not CheckUnitFlag(UnitCanAttack, true, "player", "target")
+        or not CheckUnitFlag(UnitIsPlayer, false, "target")
+        or not CheckUnitFlag(UnitPlayerControlled, false, "target")
+        or not CheckUnitFlag(UnitIsDeadOrGhost, false, "target") then return nil end
+    local getter = UnitEffectiveLevel
+    if getter == nil then getter = UnitLevel end
+    local player = ReadStat(getter, "player")
+    local target = ReadStat(getter, "target")
+    if not player or player < 1 or player > 255 or player ~= math.floor(player)
+        or not target or target < 1 or target > 255 or target ~= math.floor(target) then return nil end
+    return player, target
+end
+
+local function ReadDamageTarget(kind, model)
+    local playerLevel, targetLevel = ReadTargetLevels()
+    if not targetLevel then return nil end
+    if kind == "landed" then
+        local getReduction = C_PaperDollInfo and C_PaperDollInfo.GetArmorEffectiveness
+        if not UnitArmor or not getReduction then return nil end
+        local ok, _, armor = pcall(UnitArmor, "target")
+        if not ok or not IsNonnegative(armor) or armor == 0 then return nil end
+        local reduction = ReadStat(getReduction, armor, playerLevel)
+        if not IsNonnegative(reduction) or reduction > 1 then return nil end
+        return { level = targetLevel, armorReduction = reduction }
+    end
+
+    local miss = LEVEL_MISS[targetLevel - playerLevel]
+    if not miss then return nil end
+    local target = { level = targetLevel, baseHit = 100 - miss }
+    local class = RESISTANCE_CLASS[model.school]
+    local classes = Enum and Enum.Damageclass
+    local index = class and classes and classes[class]
+    if not UnitResistance or not IsNonnegative(index) then return target end
+    local ok, _, _, resistance = pcall(UnitResistance, "target", index)
+    if not ok or not IsNonnegative(resistance) or resistance == 0 then return target end
+    target.resistClass = class
+    target.resistance = resistance
+    target.resistMean = resistance / (resistance + 8 * playerLevel + 19)
+    return target
+end
+
+-- PvE spell hit uses live eligible target levels when available. Healing is
+-- assumed to land. Melee uses sheet crit on landed hits, without avoidance.
+function Estimates.GetExpectedRate(kind, amount, cycle, effect, tickTotal, model)
     if not IsNonnegative(amount) or not IsNonnegative(cycle) or cycle == 0 then return nil end
     if effect then
         if not IsNonnegative(tickTotal) or tickTotal == 0 then return nil end
@@ -256,7 +308,7 @@ function Estimates.GetExpectedRate(kind, amount, cycle, effect, tickTotal)
     local directCrit = not effect or effect.directCrit
     local tickCrit = effect and effect.tickCrit
     local needsCrit = (directCrit and amount > 0) or tickCrit
-    local crit, hit, bonus
+    local crit, hit, bonus, hitBonus
     if kind == "landed" then
         hit, bonus = 100, 1
     elseif kind == "healing" then
@@ -268,7 +320,7 @@ function Estimates.GetExpectedRate(kind, amount, cycle, effect, tickTotal)
         local rating = ReadStat(GetCombatRatingBonus, CR_HIT_SPELL)
         local modifier = ReadStat(GetSpellHitModifier)
         if not rating or not modifier or not IsFinite(rating + modifier) then return nil end
-        hit = math.min(100, math.max(0, 96 + rating + modifier))
+        hitBonus = rating + modifier
         bonus = 0.5
     else
         return nil
@@ -281,12 +333,29 @@ function Estimates.GetExpectedRate(kind, amount, cycle, effect, tickTotal)
         end
         if not IsNonnegative(crit) or crit > 100 then return nil end
     end
+    local target = model and kind ~= "healing" and ReadDamageTarget(kind, model)
+    if hitBonus then
+        local baseHit = target and target.baseHit or 96
+        if effect and effect.binaryApplication and target and target.resistMean then
+            baseHit = baseHit * (1 - target.resistMean)
+        end
+        hit = math.min(100, math.max(0, baseHit + hitBonus))
+    end
     local critFactor = 1 + bonus * (crit or 0) / 100
     local direct = amount * (directCrit and critFactor or 1)
     local ticks = (tickTotal or 0) * (tickCrit and critFactor or 1)
+    if target then
+        if target.armorReduction then
+            direct = direct * (1 - target.armorReduction)
+        elseif target.resistMean then
+            local tickReduction = effect and effect.channel and target.resistMean or target.resistMean / 10
+            direct = direct * (1 - target.resistMean)
+            ticks = ticks * (1 - tickReduction)
+        end
+    end
     -- An aura's application hit gates all damage. Independent missile hit
     -- rolls have the same aggregate expectation and no additional parent roll.
     local rate = ((direct + ticks) / cycle) * (hit / 100)
-    if IsNonnegative(rate) then return rate, hit, crit end
+    if IsNonnegative(rate) then return rate, hit, crit, target end
     return nil
 end

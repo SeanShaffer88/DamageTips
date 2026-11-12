@@ -80,14 +80,28 @@ Notes
   variant (429151) show scaling only. Bloodthirst shows attack power
   scaling and a DPS estimate for landed hits.
 * Expected output for direct spells uses the game's current tooltip amount
-  and the spell's cast/cooldown/GCD cadence. The equal-level spell hit
-  model starts at 96% and adds sheet hit modifiers, bounded to 0–100%.
+  and the spell's cast/cooldown/GCD cadence. The fallback equal-level spell
+  hit model starts at 96% and adds sheet hit modifiers, bounded to 0–100%.
   Spell crit is modeled at 1.5x, melee crit at 2x, and direct heals are
   assumed to land. Expected HPS represents raw healing before overheal.
-  These estimates use sheet stats and a fixed baseline for crit bonuses,
-  with target resistances, avoidance, spell-specific talents and procs
-  outside the model. Bloodthirst derives its amount from the live AP
-  formula instead of applying AP to an already-valued tooltip.
+  These estimates use sheet stats and fixed crit bonuses. Spell-specific
+  talents, procs, auras, spell piercing and avoidance are outside the
+  model. Bloodthirst derives its amount from the live AP formula.
+* For damage spells, Expected DPS checks the current target during tooltip
+  refresh. Target level adjusts spell hit for attackable, living PvE
+  targets within three effective levels of the player. The target label
+  reports level only when school resistance is unavailable, restricted,
+  zero, or outside the Holy damage model. Ineligible targets and
+  unsupported level differences use the equal-level estimate.
+* Positive readable resistance uses the combat-log fitted mean
+  R / (R + 8L + 19), where L is the player's effective level. Direct
+  damage and channel ticks use the full mean. Ordinary periodic ticks use
+  one tenth of it. Mind Flay uses this mean both to reduce the initial
+  application chance before hit bonuses and for partial resistance on
+  successful ticks. The fit is approximate and spell-specific server
+  mechanics can differ. Bloodthirst uses the client armor reduction API
+  when effective armor is readable and positive. Its rate is conditional
+  on landed hits in either mode. Healing estimates are target-independent.
 * Supported periodic families are Corruption, Shadow Word: Pain,
   Rejuvenation, Renew, Regrowth, Moonfire, Immolate, Holy Fire and Fireball.
   Arcane Missiles and Mind Flay use their full base channels. Serpent Sting
@@ -95,8 +109,8 @@ Notes
   description and the build's tick schedule. The scaling lines are nominal
   per-tick gains, with a full-effect total where the periodic coefficient
   is positive.
-* Periodic rates assume all ticks finish with zero resistance and use the
-  longest of the effect duration and the tooltip's normal casting cadence.
+* Periodic rates assume all ticks finish and use the longest of the
+  effect duration and the tooltip's normal casting cadence.
   A damage aura needs one successful application. Each Arcane Missiles
   missile rolls hit independently. The model applies 1.5x crit only to
   eligible components and assumes healing lands. Mind Flay represents

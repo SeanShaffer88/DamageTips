@@ -66,6 +66,7 @@ local function Periodic(grammar, school, ticks, interval, coefficient, options)
             directCrit = options.directCrit == true,
             hitMode = options.hitMode or (healing and "none" or "application"),
             channel = options.channel, ranged = options.ranged,
+            binaryApplication = options.binaryApplication,
         },
     }
     if healing then
@@ -108,5 +109,5 @@ AddRanks(Periodic("missiles", "arcane", 3, 1, 0.286, missiles), 5143)
 AddRanks(Periodic("missiles", "arcane", 4, 1, 0.286, missiles), 5144)
 AddRanks(Periodic("missiles", "arcane", 5, 1, 0.286, missiles), 5145, 8416, 8417, 10211, 10212, 25345)
 -- Mind Flay has one application hit. The base channel excludes talent ramp.
-AddRanks(Periodic("mindFlay", "shadow", 3, 1, 0.167, { channel = "base" }),
+AddRanks(Periodic("mindFlay", "shadow", 3, 1, 0.167, { channel = "base", binaryApplication = true }),
     15407, 17311, 17312, 17313, 17314, 18807)

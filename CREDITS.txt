@@ -33,10 +33,17 @@ References
     Camelot's character sheet combines spell hit rating and spell hit
     modifier:
     https://github.com/Gethe/wow-ui-source/blob/4cd0ab752a77164f654ccbca9d0c1fe8dafceebe/Interface/AddOns/Blizzard_UIPanels_Game/Camelot/PaperDollFrameStats.lua
+    Effective levels and armor/resistance API usage:
+    https://github.com/Gethe/wow-ui-source/blob/4cd0ab752a77164f654ccbca9d0c1fe8dafceebe/Interface/AddOns/Blizzard_UnitFrame/Camelot/TargetFrame.lua
+    https://github.com/Gethe/wow-ui-source/blob/4cd0ab752a77164f654ccbca9d0c1fe8dafceebe/Interface/AddOns/Blizzard_UIPanels_Game/Camelot/PaperDollFrame.lua
   - WoWSims Forever references for the equal-level 4% base spell miss
     benchmark and the hit calculation used by this tooltip model:
     https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/core/attack_table_test.go
     https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/core/spell_result.go
+    Target hit brackets, the combat-log fitted resistance mean and Mind
+    Flay's binary application with partial resistance on landed ticks:
+    https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/core/spell_resistances.go
+    https://github.com/wowsims/forever/issues/76
     Periodic application and crit references at the same revision:
     https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/warlock/corruption.go
     https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/warlock/immolate.go

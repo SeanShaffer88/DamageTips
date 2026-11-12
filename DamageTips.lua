@@ -226,8 +226,15 @@ local function PeriodicScalingLineText(stat, effect, output)
         FormatPowerGain(effect.coefficient * effect.ticks), effect.ticks)
 end
 
-local function ExpectedLineText(kind, rate, hit, crit, effect)
+local function ExpectedLineText(kind, rate, hit, crit, effect, target)
     local value = FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], rate))
+    local context, resistText = "equal-level PvE", ""
+    if target and kind == "spell" then
+        context = string_format("target L%d%s", target.level, target.resistance and "" or ", level only")
+        if target.resistance then
+            resistText = string_format(", %s resist %.4g", target.resistClass, target.resistance)
+        end
+    end
     if effect then
         local period = effect.channel and (effect.channel .. " channel") or "full effect"
         local critText = crit and string_format("%.1f%% crit", crit) or "no crit rolls"
@@ -235,15 +242,19 @@ local function ExpectedLineText(kind, rate, hit, crit, effect)
             return string_format("Expected HPS (%s): %s (%s)", period, value, critText)
         end
         local hitUnit = effect.hitMode == "tick" and "hit per missile" or "hit"
-        return string_format("Expected DPS (%s, equal-level PvE): %s (%.1f%% %s, %s)",
-            period, value, hit, hitUnit, critText)
+        return string_format("Expected DPS (%s, %s): %s (%.1f%% %s, %s%s)",
+            period, context, value, hit, hitUnit, critText, resistText)
     end
     if kind == "healing" then
         return string_format("Expected HPS: %s (%.1f%% crit)", value, crit)
     elseif kind == "landed" then
+        if target then
+            return string_format("DPS on landed hits (target L%d, armor): %s (%.1f%% crit, %.1f%% armor reduction)",
+                target.level, value, crit, target.armorReduction * 100)
+        end
         return string_format("DPS on landed hits: %s (%.1f%% crit)", value, crit)
     end
-    return string_format("Expected DPS (equal-level PvE): %s (%.1f%% hit, %.1f%% crit)", value, hit, crit)
+    return string_format("Expected DPS (%s): %s (%.1f%% hit, %.1f%% crit%s)", context, value, hit, crit, resistText)
 end
 
 local function DamageLineText(dps)
@@ -854,11 +865,11 @@ local function AddPowerLines(tooltip, t, dmgColor)
         end
     end
     if t.expectedAmount then
-        local rate, hit, crit = Estimates.GetExpectedRate(model.expected, t.expectedAmount, t.expectedCycle,
-            model.periodic, t.tickTotal)
+        local rate, hit, crit, target = Estimates.GetExpectedRate(model.expected, t.expectedAmount, t.expectedCycle,
+            model.periodic, t.tickTotal, model)
         if rate then
             local color = model.expected == "healing" and DB.healColor or dmgColor
-            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, model.periodic), color)
+            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, model.periodic, target), color)
             added = true
         end
     end

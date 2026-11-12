@@ -1,3 +1,8 @@
+1.5.0-alpha.4
+- Expected DPS uses eligible live PvE target levels and readable school
+  resistance. The tooltip distinguishes level-only and equal-level estimates.
+- Bloodthirst can show an armor-adjusted landed-hit DPS estimate.
+
 1.5.0-alpha.3
 - Added periodic power scaling and full-effect DPS/HPS for selected damage
   and healing spells. Arcane Missiles and Mind Flay show channel estimates.
