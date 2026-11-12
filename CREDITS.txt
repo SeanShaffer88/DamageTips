@@ -7,11 +7,32 @@ Licence:     GPL-3.0-or-later (LICENSE.txt; licence text (c) Free Software
 Development assistance: Claude (Anthropic)
 
 References
-  - SpellCalc by coolmodi, for mana sustain and caster stat concepts:
+  - SpellCalc by coolmodi, for mana sustain, caster stats, and the
+    ideas of showing scaling and hit/crit-adjusted output:
     https://github.com/coolmodi/SpellCalc/tree/c6b53a7c07c90d7f7c261f8aa71b5a3e9d5ebd6c
     DamageTips implements these features against the Forever client APIs.
+  - WoW Forever 1.60.1.70888 client tables, extracted by Wago Tools.
+    SpellEffect coefficients and effect types were cross-checked against
+    the ranked English descriptions, school/flags, class and spell levels.
+    https://wago.tools/db2/SpellEffect/csv?build=1.60.1.70888
+    https://wago.tools/db2/Spell/csv?build=1.60.1.70888
+    https://wago.tools/db2/SpellName/csv?build=1.60.1.70888
+    https://wago.tools/db2/SpellMisc/csv?build=1.60.1.70888
+    https://wago.tools/db2/SpellClassOptions/csv?build=1.60.1.70888
+    https://wago.tools/db2/SpellLevels/csv?build=1.60.1.70888
+    Bloodthirst uses the attack power percentage from its Spell description
+    and matching SpellEffect base points. The Arcane Shot coefficient comes
+    from Blizzard's November 2 Forever beta development notes:
+    https://us.forums.blizzard.com/en/wow/t/wow-forever-beta-development-notes-%E2%80%93-updated-november-2/2360696
   - Blizzard's Forever UI API documentation, preserved by Gethe:
     https://github.com/Gethe/wow-ui-source/tree/4cd0ab752a77164f654ccbca9d0c1fe8dafceebe/Interface/AddOns/Blizzard_APIDocumentationGenerated
+    Camelot's character sheet combines spell hit rating and spell hit
+    modifier:
+    https://github.com/Gethe/wow-ui-source/blob/4cd0ab752a77164f654ccbca9d0c1fe8dafceebe/Interface/AddOns/Blizzard_UIPanels_Game/Camelot/PaperDollFrameStats.lua
+  - WoWSims Forever references for the equal-level 4% base spell miss
+    benchmark and the hit calculation used by this tooltip model:
+    https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/core/attack_table_test.go
+    https://github.com/wowsims/forever/blob/2bc2493ea477eafa1673a4216bc53f67b949fc53/sim/core/spell_result.go
   - Warcraft Wiki (warcraft.wiki.gg): API documentation, Patch 1.60.1 API
     changes and notes, Patch 12.0.0 secret-value documentation.
 

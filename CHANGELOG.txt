@@ -1,3 +1,11 @@
+1.5.0-alpha.2
+- Added optional spell, healing and attack power scaling for selected ranks
+  on WoW Forever build 1.60.1.70888. Shows the nominal gain per 100 power.
+- Added optional expected DPS and HPS for supported direct spells, using
+  current sheet crit and an equal-level PvE spell hit model. Bloodthirst
+  has a separate DPS estimate for landed hits.
+- Enable these in Lines or with /damagetips scaling and /damagetips expected.
+
 1.5.0-alpha.1
 - Added optional Mana sustain estimates for player spells with an up-front
   mana cost. Shows affordable casts and estimated damage or healing before

@@ -15,7 +15,7 @@ Adds extra lines to spell tooltips on your action bars and in the spellbook:
 
 Optional lines: damage per cast, damage range, next-rank comparison,
 school-tinted damage lines, a hold-Shift breakdown of the maths, mana
-sustain estimates, and caster spell stats.
+sustain estimates, caster spell stats, power scaling and expected output.
 
 Time basis for DPS: the longest of cast time, the spell's global cooldown,
 its base cooldown and any damage-over-time duration.
@@ -37,7 +37,8 @@ between sessions.
 
   Lines          DPS, DPM, damage per cast, damage range, healing lines,
                  per-mana lines, mana cost, school tint, Shift breakdown;
-                 show on action bars / spellbook, mana sustain, caster stats
+                 show on action bars / spellbook, mana sustain, caster stats,
+                 spell and attack power scaling, expected DPS and HPS
   Calculation    Include damage over time, GCD minimum, thousands separators,
                  next-rank comparison, DPS decimals, mana cost format
   Format         Colours (damage / healing / mana), font outline, font size,
@@ -54,6 +55,8 @@ Commands
 /damagetips mana    Toggle the mana cost line
 /damagetips sustain Toggle the mana sustain estimate
 /damagetips caster  Toggle caster spell stats
+/damagetips scaling Toggle spell and attack power scaling
+/damagetips expected Toggle expected DPS and HPS
 /damagetips healing Toggle the healing lines
 /damagetips minimap Toggle the minimap button
 /damagetips debug   Print the spell text the addon read (for troubleshooting)
@@ -67,6 +70,24 @@ Commands
 
 Notes
 -----
+* Power scaling and expected output use an exact spell-rank list for WoW
+  Forever 1.60.1.70888 (Interface 16001). Both options start off.
+  The scaling lines show nominal changes per +100 stat before any
+  additional talent or low-rank modifiers.
+* Supported caster families are Fire Blast, Lightning Bolt, Shadow Bolt,
+  Wrath, Starfire, Flash Heal, Heal, Greater Heal, Healing Touch and
+  Healing Wave. Frostbolt, Arcane Shot and the verified Hammer of Wrath
+  variant (429151) show scaling only. Bloodthirst shows attack power
+  scaling and a DPS estimate for landed hits.
+* Expected output for direct spells uses the game's current tooltip amount
+  and the spell's cast/cooldown/GCD cadence. The equal-level spell hit
+  model starts at 96% and adds sheet hit modifiers, bounded to 0–100%.
+  Spell crit is modeled at 1.5x, melee crit at 2x, and direct heals are
+  assumed to land. Expected HPS represents raw healing before overheal.
+  These estimates use sheet stats and a fixed baseline for crit bonuses,
+  with target resistances, avoidance, spell-specific talents and procs
+  outside the model. Bloodthirst derives its amount from the live AP
+  formula instead of applying AP to an already-valued tooltip.
 * Mana sustain uses current mana, the spell's up-front cost, and casting
   mana regeneration. It pays the first cast from your current pool and
   applies steady regeneration between casts. Cadence follows the tooltip's
@@ -83,8 +104,7 @@ Notes
   a spell may occasionally show no damage line while data is restricted.
 * Damage values are read from the spell's description text, so this currently
   works on English clients only.
-* Spells without a flat damage number in their description (many weapon
-  abilities) will not show damage lines.
+* The basic DPS line requires a damage amount or range in the spell text.
 * Spell data that the client has not loaded yet is requested once. The
   lines appear when the data arrives or on the next tooltip refresh.
 

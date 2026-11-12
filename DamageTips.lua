@@ -60,6 +60,8 @@ local DEFAULTS = {
     showDPMana    = false,  -- "Damage per mana: x" (opt-in)
     showManaSustain = false,
     showCasterStats = false,
+    showPowerScaling = false,
+    showExpectedThroughput = false,
     spellRules    = {},     -- per-spell overrides: spellID string -> "hide" | avg damage number
     healColor     = { 0.45, 0.85, 0.45 },
     showActionBar = true,   -- add lines to action bar tooltips
@@ -78,7 +80,8 @@ local BOOL_KEYS = { "showDPS", "showDPM", "showMana", "showDPMana", "showActionB
                     "showSpellbook", "includeDoT", "gcdFloor", "thousands",
                     "showHealing", "showRange", "showDPC", "schoolTint",
                     "showNextRank", "shiftDetails", "showMinimap",
-                    "showManaSustain", "showCasterStats" }
+                    "showManaSustain", "showCasterStats", "showPowerScaling",
+                    "showExpectedThroughput" }
 local ENUMS = { dpsDecimals = { 0, 1, 2 }, manaMode = { 1, 2, 3 }, fontOutline = { 1, 2, 3 } }
 
 local PREFIX = "|cffffd100DamageTips|r: "
@@ -206,6 +209,21 @@ local function OutputBeforeLowManaText(casts, average, label)
     local total = casts * average
     if total >= math.huge then return nil end
     return string_format("Before low mana: ~%s %s", FormatNumber(string_format("%.0f", total)), label)
+end
+
+local function PowerScalingLineText(stat, coefficient, output, unit)
+    local gain = (string_format("%.1f", coefficient * 100):gsub("%.0$", ""))
+    return string_format("+100 %s: +%s %s / %s (nominal)", stat, gain, output, unit or "cast")
+end
+
+local function ExpectedLineText(kind, rate, hit, crit)
+    local value = FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], rate))
+    if kind == "healing" then
+        return string_format("Expected HPS: %s (%.1f%% crit)", value, crit)
+    elseif kind == "landed" then
+        return string_format("DPS on landed hits: %s (%.1f%% crit)", value, crit)
+    end
+    return string_format("Expected DPS (equal-level PvE): %s (%.1f%% hit, %.1f%% crit)", value, hit, crit)
 end
 
 local function DamageLineText(dps)
@@ -594,7 +612,7 @@ end)
 ----------------------------------------------------------------------
 -- Computes every number for a spell. `light` skips healing and next-rank
 -- (used when computing the next rank itself, to avoid chaining).
-local function Compute(spellID, light, estimate)
+local function Compute(spellID, light, estimate, powerModel)
     local text, secret, loaded = GetSpellText(spellID)
     local t = { secret = secret, loaded = loaded }
     if not loaded and not secret then
@@ -610,6 +628,9 @@ local function Compute(spellID, light, estimate)
 
     estimate = estimate and loaded and not secret
     local wantsSustain = estimate and DB.showManaSustain
+    local wantsExpected = estimate and powerModel and DB.showExpectedThroughput and type(rule) ~= "number"
+    local hasPeriodicOutput = false
+    t.powerModel = estimate and powerModel
     t.baselineDamage = DB.showDPS or DB.showDPM or DB.showDPC or DB.showRange or DB.showDPMana
     if DB.showMana or DB.showDPMana or wantsSustain then
         t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, wantsSustain)
@@ -623,6 +644,7 @@ local function Compute(spellID, light, estimate)
         else
             direct, dot, dotDur, lo, hi, school = ParseDamage(text)
         end
+        hasPeriodicOutput = dot > 0
         if not DB.includeDoT then dot, dotDur = 0, nil end
         local total = direct + dot
         t.total, t.lo, t.hi, t.dot, t.dotDur, t.school = total, lo, hi, dot, dotDur, school
@@ -631,6 +653,7 @@ local function Compute(spellID, light, estimate)
     if not light and (DB.showHealing or estimate) and text ~= "" then
         local noDot = text:gsub(P.dot, "") -- never read a DoT as a heal-over-time
         local hDirect, hLo, hHi, hot, hotDur, absorb = ParseHealing(noDot)
+        hasPeriodicOutput = hasPeriodicOutput or hot > 0
         if not DB.includeDoT then hot, hotDur = 0, nil end
         local htotal = hDirect + hot
         t.htotal, t.hLo, t.hHi, t.hot, t.hotDur, t.absorb = htotal, hLo, hHi, hot, hotDur, absorb
@@ -638,7 +661,8 @@ local function Compute(spellID, light, estimate)
 
     local damageTiming = t.total and t.total > 0 and (t.baselineDamage or wantsSustain)
     local healingTiming = t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
-    if damageTiming or healingTiming then
+    local expectedAmount = wantsExpected and not hasPeriodicOutput and Estimates.GetExpectedAmount(powerModel, text)
+    if damageTiming or healingTiming or expectedAmount then
         local cd, gcd, cooldownsReadable = GetBaseTimings(spellID)
         local cast, castReadable = GetCastTime(spellID)
         local baseTime = math_max(cast, cd)
@@ -656,6 +680,10 @@ local function Compute(spellID, light, estimate)
         if wantsSustain and cooldownsReadable and castReadable then
             t.sustainCycle = math_max(t.time or 0, t.htime or 0)
         end
+        if expectedAmount and cooldownsReadable and castReadable then
+            t.expectedAmount = expectedAmount
+            t.expectedCycle = baseTime > 0 and baseTime or gcd
+        end
     end
 
     if not light and t.baselineDamage and DB.showNextRank and t.dps and t.dps > 0 then
@@ -669,13 +697,13 @@ local function Compute(spellID, light, estimate)
     return t, estimate
 end
 
-local function BuildEntry(e, spellID, now, estimate)
+local function BuildEntry(e, spellID, now, estimate, powerModel)
     e.dmgLine, e.dpcLine, e.rangeLine, e.effLine = false, false, false, false
     e.healLine, e.heffLine, e.absorbLine, e.nextLine, e.manaLine = false, false, false, false, false
     e.detailLines, e.schoolColor = nil, nil
     e.stamp = now
 
-    local t, readableEstimate = Compute(spellID, false, estimate)
+    local t, readableEstimate = Compute(spellID, false, estimate, powerModel)
     if t.requested then
         e.stamp = 0 -- data not loaded yet: do not cache this result
     end
@@ -707,7 +735,7 @@ local function BuildEntry(e, spellID, now, estimate)
     if readableEstimate then return t end
 end
 
-local function GetEntry(spellID, estimate)
+local function GetEntry(spellID, estimate, powerModel)
     local now = GetTime()
     local e = cache[spellID]
     if not estimate and e and (now - e.stamp) < CACHE_TTL then return e end
@@ -717,7 +745,7 @@ local function GetEntry(spellID, estimate)
         if e then entryPool[#entryPool] = nil else e = {} end
         cache[spellID] = e
     end
-    return e, BuildEntry(e, spellID, now, estimate)
+    return e, BuildEntry(e, spellID, now, estimate, powerModel)
 end
 
 ----------------------------------------------------------------------
@@ -757,6 +785,37 @@ GameTooltip:HookScript("OnTooltipCleared", function()
     cur.spellID, cur.owner, cur.source, cur.added = nil, nil, nil, false
 end)
 
+local function AddPowerLines(tooltip, t, dmgColor)
+    local model = t.powerModel
+    if not model then return false end
+    local added = false
+    if DB.showPowerScaling then
+        if model.spellPower then
+            local school = model.school:sub(1, 1):upper() .. model.school:sub(2)
+            AddStyledLine(tooltip, PowerScalingLineText(school .. " spell power", model.spellPower, "damage"), dmgColor)
+        end
+        if model.healingPower then
+            AddStyledLine(tooltip, PowerScalingLineText("healing power", model.healingPower, "healing"), DB.healColor)
+        end
+        if model.attackPower then
+            AddStyledLine(tooltip, PowerScalingLineText("attack power", model.attackPower, "damage"), dmgColor)
+        end
+        if model.rangedPower then
+            AddStyledLine(tooltip, PowerScalingLineText("ranged attack power", model.rangedPower, "damage", "shot"), dmgColor)
+        end
+        added = true
+    end
+    if t.expectedAmount then
+        local rate, hit, crit = Estimates.GetExpectedRate(model.expected, t.expectedAmount, t.expectedCycle)
+        if rate then
+            local color = model.expected == "healing" and DB.healColor or dmgColor
+            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit), color)
+            added = true
+        end
+    end
+    return added
+end
+
 local function AddEstimateLines(tooltip, t, dmgColor)
     local added = false
     if t.fixedManaCost and t.sustainCycle then
@@ -787,14 +846,16 @@ local function AddEstimateLines(tooltip, t, dmgColor)
             added = true
         end
     end
-    return added
+    return AddPowerLines(tooltip, t, dmgColor) or added
 end
 
 AddSpellInfo = function(tooltip, spellID, source)
     if not DB or not spellID then return end
-    local estimate = source and (DB.showManaSustain or DB.showCasterStats)
+    local model = source and (DB.showPowerScaling or DB.showExpectedThroughput)
+        and Estimates.GetSpellModel(spellID)
+    local estimate = source and (DB.showManaSustain or DB.showCasterStats or model)
         and Estimates.IsKnownPlayerSpell(spellID, source == ACTION)
-    local e, estimateData = GetEntry(spellID, estimate)
+    local e, estimateData = GetEntry(spellID, estimate, model)
     local added = false
     local dmgColor = e.schoolColor or DB.damageColor
 
@@ -1028,6 +1089,8 @@ local function UpdateColors()
     config.previewMana:SetTextColor(m[1], m[2], m[3])
     config.previewSustain:SetTextColor(m[1], m[2], m[3])
     config.previewCaster:SetTextColor(d[1], d[2], d[3])
+    config.previewScaling:SetTextColor(d[1], d[2], d[3])
+    config.previewExpected:SetTextColor(d[1], d[2], d[3])
 end
 
 local function ApplyPreview(fs, text, path, size, flags)
@@ -1054,6 +1117,8 @@ local function UpdatePreview()
     ApplyPreview(config.previewMana, ManaLineText(SAMPLE_COST, SAMPLE_MAX), path, size, flags)
     ApplyPreview(config.previewSustain, DB.showManaSustain and ManaSustainLineText(8, 15), path, size, flags)
     ApplyPreview(config.previewCaster, DB.showCasterStats and "Caster spell crit: 12.5%", path, size, flags)
+    ApplyPreview(config.previewScaling, DB.showPowerScaling and PowerScalingLineText("Fire spell power", 0.429, "damage"), path, size, flags)
+    ApplyPreview(config.previewExpected, DB.showExpectedThroughput and ExpectedLineText("spell", 130, 98, 12.5), path, size, flags)
     config.sliderText:SetText("Font size: " .. DB.fontSize)
 end
 
@@ -1204,6 +1269,8 @@ local function CreateConfig()
     MakeHeader(lines, "Spell estimates", 330, -92)
     MakeCheck(lines, "Mana sustain estimate", 330, -112, "showManaSustain")
     MakeCheck(lines, "Caster spell stats", 330, -138, "showCasterStats")
+    MakeCheck(lines, "Spell and attack power scaling", 330, -164, "showPowerScaling")
+    MakeCheck(lines, "Expected DPS and HPS", 330, -190, "showExpectedThroughput")
 
     ------------------------------------------------------------------
     -- Tab: Calculation
@@ -1269,6 +1336,10 @@ local function CreateConfig()
     f.previewSustain:SetPoint("TOPLEFT", 16, -140 - 9 * 20)
     f.previewCaster = fmt:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     f.previewCaster:SetPoint("TOPLEFT", 16, -140 - 10 * 20)
+    f.previewScaling = fmt:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    f.previewScaling:SetPoint("TOPLEFT", 16, -140 - 11 * 20)
+    f.previewExpected = fmt:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    f.previewExpected:SetPoint("TOPLEFT", 16, -140 - 12 * 20)
 
     ------------------------------------------------------------------
     -- Tab: Advanced
@@ -1546,6 +1617,8 @@ local function ShowHelp()
     print("  |cffffd100/damagetips mana|r - toggle mana cost line (" .. OnOff(DB.showMana) .. ")")
     print("  |cffffd100/damagetips sustain|r - toggle mana sustain (" .. OnOff(DB.showManaSustain) .. ")")
     print("  |cffffd100/damagetips caster|r - toggle caster spell stats (" .. OnOff(DB.showCasterStats) .. ")")
+    print("  |cffffd100/damagetips scaling|r - toggle power scaling (" .. OnOff(DB.showPowerScaling) .. ")")
+    print("  |cffffd100/damagetips expected|r - toggle expected output (" .. OnOff(DB.showExpectedThroughput) .. ")")
     print("  |cffffd100/damagetips healing|r - toggle healing lines (" .. OnOff(DB.showHealing) .. ")")
     print("  |cffffd100/damagetips minimap|r - toggle the minimap button (" .. OnOff(DB.showMinimap) .. ")")
     print("  |cffffd100/damagetips debug|r - toggle debug output (" .. OnOff(DEBUG) .. ")")
@@ -1562,6 +1635,8 @@ local TOGGLES = {
     mana    = { key = "showMana",    label = "mana cost line" },
     sustain = { key = "showManaSustain", label = "mana sustain estimate" },
     caster  = { key = "showCasterStats", label = "caster spell stats" },
+    scaling = { key = "showPowerScaling", label = "spell and attack power scaling" },
+    expected = { key = "showExpectedThroughput", label = "expected DPS and HPS" },
     healing = { key = "showHealing", label = "healing lines" },
 }
 
