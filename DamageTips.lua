@@ -211,13 +211,33 @@ local function OutputBeforeLowManaText(casts, average, label)
     return string_format("Before low mana: ~%s %s", FormatNumber(string_format("%.0f", total)), label)
 end
 
+local function FormatPowerGain(coefficient)
+    return (string_format("%.1f", coefficient * 100):gsub("%.0$", ""))
+end
+
 local function PowerScalingLineText(stat, coefficient, output, unit)
-    local gain = (string_format("%.1f", coefficient * 100):gsub("%.0$", ""))
+    local gain = FormatPowerGain(coefficient)
     return string_format("+100 %s: +%s %s / %s (nominal)", stat, gain, output, unit or "cast")
 end
 
-local function ExpectedLineText(kind, rate, hit, crit)
+local function PeriodicScalingLineText(stat, effect, output)
+    return string_format("+100 %s: +%s %s / tick (+%s over %d ticks)",
+        stat, FormatPowerGain(effect.coefficient), output,
+        FormatPowerGain(effect.coefficient * effect.ticks), effect.ticks)
+end
+
+local function ExpectedLineText(kind, rate, hit, crit, effect)
     local value = FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], rate))
+    if effect then
+        local period = effect.channel and (effect.channel .. " channel") or "full effect"
+        local critText = crit and string_format("%.1f%% crit", crit) or "no crit rolls"
+        if kind == "healing" then
+            return string_format("Expected HPS (%s): %s (%s)", period, value, critText)
+        end
+        local hitUnit = effect.hitMode == "tick" and "hit per missile" or "hit"
+        return string_format("Expected DPS (%s, equal-level PvE): %s (%.1f%% %s, %s)",
+            period, value, hit, hitUnit, critText)
+    end
     if kind == "healing" then
         return string_format("Expected HPS: %s (%.1f%% crit)", value, crit)
     elseif kind == "landed" then
@@ -419,6 +439,7 @@ local PATTERNS = {
         absorb    = "absorbs? (%d+) damage",
         hot       = "(%d+) health over (%d+) sec",
         hotAlt    = "for (%d+) over (%d+) sec",
+        renew     = "[Hh]eals the target of ([%d,]+) damage over (%d+) sec%a*%.",
         healRange = "(%d+) to (%d+) health",
         healFlat  = "for (%d+) health",
         healFlat2 = "restores (%d+) health",
@@ -628,9 +649,15 @@ local function Compute(spellID, light, estimate, powerModel)
 
     estimate = estimate and loaded and not secret
     local wantsSustain = estimate and DB.showManaSustain
-    local wantsExpected = estimate and powerModel and DB.showExpectedThroughput and type(rule) ~= "number"
+    local wantsExpected = estimate and powerModel and powerModel.expected
+        and DB.showExpectedThroughput and type(rule) ~= "number"
     local hasPeriodicOutput = false
     t.powerModel = estimate and powerModel
+    local effect = t.powerModel and t.powerModel.periodic
+    local legacyText = text
+    if P.renew then
+        legacyText = text:gsub(P.renew, "heals the target for %1 health over %2 sec.")
+    end
     t.baselineDamage = DB.showDPS or DB.showDPM or DB.showDPC or DB.showRange or DB.showDPMana
     if DB.showMana or DB.showDPMana or wantsSustain then
         t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, wantsSustain)
@@ -642,7 +669,7 @@ local function Compute(spellID, light, estimate, powerModel)
             direct, lo, hi, school = rule, rule, rule, nil
             dot, dotDur = 0, nil
         else
-            direct, dot, dotDur, lo, hi, school = ParseDamage(text)
+            direct, dot, dotDur, lo, hi, school = ParseDamage(legacyText)
         end
         hasPeriodicOutput = dot > 0
         if not DB.includeDoT then dot, dotDur = 0, nil end
@@ -651,7 +678,7 @@ local function Compute(spellID, light, estimate, powerModel)
     end
 
     if not light and (DB.showHealing or estimate) and text ~= "" then
-        local noDot = text:gsub(P.dot, "") -- never read a DoT as a heal-over-time
+        local noDot = legacyText:gsub(P.dot, "") -- never read a DoT as a heal-over-time
         local hDirect, hLo, hHi, hot, hotDur, absorb = ParseHealing(noDot)
         hasPeriodicOutput = hasPeriodicOutput or hot > 0
         if not DB.includeDoT then hot, hotDur = 0, nil end
@@ -661,7 +688,16 @@ local function Compute(spellID, light, estimate, powerModel)
 
     local damageTiming = t.total and t.total > 0 and (t.baselineDamage or wantsSustain)
     local healingTiming = t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
-    local expectedAmount = wantsExpected and not hasPeriodicOutput and Estimates.GetExpectedAmount(powerModel, text)
+    local expectedAmount
+    if effect then
+        if DB.includeDoT and (DB.showPowerScaling or wantsExpected) then
+            local direct, tickTotal = Estimates.GetPeriodicAmounts(powerModel, text)
+            t.tickTotal = tickTotal
+            if wantsExpected then expectedAmount = direct end
+        end
+    elseif wantsExpected and not hasPeriodicOutput then
+        expectedAmount = Estimates.GetExpectedAmount(powerModel, text)
+    end
     if damageTiming or healingTiming or expectedAmount then
         local cd, gcd, cooldownsReadable = GetBaseTimings(spellID)
         local cast, castReadable = GetCastTime(spellID)
@@ -682,7 +718,8 @@ local function Compute(spellID, light, estimate, powerModel)
         end
         if expectedAmount and cooldownsReadable and castReadable then
             t.expectedAmount = expectedAmount
-            t.expectedCycle = baseTime > 0 and baseTime or gcd
+            local time = math_max(baseTime, effect and effect.duration or 0)
+            t.expectedCycle = time > 0 and time or gcd
         end
     end
 
@@ -790,26 +827,38 @@ local function AddPowerLines(tooltip, t, dmgColor)
     if not model then return false end
     local added = false
     if DB.showPowerScaling then
+        local effect = model.periodic
+        local school = model.school and (model.school:sub(1, 1):upper() .. model.school:sub(2))
         if model.spellPower then
-            local school = model.school:sub(1, 1):upper() .. model.school:sub(2)
             AddStyledLine(tooltip, PowerScalingLineText(school .. " spell power", model.spellPower, "damage"), dmgColor)
+            added = true
         end
         if model.healingPower then
             AddStyledLine(tooltip, PowerScalingLineText("healing power", model.healingPower, "healing"), DB.healColor)
+            added = true
         end
         if model.attackPower then
             AddStyledLine(tooltip, PowerScalingLineText("attack power", model.attackPower, "damage"), dmgColor)
+            added = true
         end
         if model.rangedPower then
             AddStyledLine(tooltip, PowerScalingLineText("ranged attack power", model.rangedPower, "damage", "shot"), dmgColor)
+            added = true
         end
-        added = true
+        if effect and t.tickTotal and effect.coefficient > 0 then
+            local healing = model.expected == "healing"
+            local stat = healing and "healing power" or (effect.ranged and "ranged attack power" or (school .. " spell power"))
+            local color = healing and DB.healColor or dmgColor
+            AddStyledLine(tooltip, PeriodicScalingLineText(stat, effect, healing and "healing" or "damage"), color)
+            added = true
+        end
     end
     if t.expectedAmount then
-        local rate, hit, crit = Estimates.GetExpectedRate(model.expected, t.expectedAmount, t.expectedCycle)
+        local rate, hit, crit = Estimates.GetExpectedRate(model.expected, t.expectedAmount, t.expectedCycle,
+            model.periodic, t.tickTotal)
         if rate then
             local color = model.expected == "healing" and DB.healColor or dmgColor
-            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit), color)
+            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, model.periodic), color)
             added = true
         end
     end

@@ -88,6 +88,21 @@ Notes
   with target resistances, avoidance, spell-specific talents and procs
   outside the model. Bloodthirst derives its amount from the live AP
   formula instead of applying AP to an already-valued tooltip.
+* Supported periodic families are Corruption, Shadow Word: Pain,
+  Rejuvenation, Renew, Regrowth, Moonfire, Immolate, Holy Fire and Fireball.
+  Arcane Missiles and Mind Flay use their full base channels. Serpent Sting
+  shows ranged power scaling. Each estimate needs the recognized English
+  description and the build's tick schedule. The scaling lines are nominal
+  per-tick gains, with a full-effect total where the periodic coefficient
+  is positive.
+* Periodic rates assume all ticks finish with zero resistance and use the
+  longest of the effect duration and the tooltip's normal casting cadence.
+  A damage aura needs one successful application. Each Arcane Missiles
+  missile rolls hit independently. The model applies 1.5x crit only to
+  eligible components and assumes healing lands. Mind Flay represents
+  the base channel before any talent ramp. Include damage over time also
+  controls these periodic lines. Mixed spells can still show their direct
+  power scaling with that option off.
 * Mana sustain uses current mana, the spell's up-front cost, and casting
   mana regeneration. It pays the first cast from your current pool and
   applies steady regeneration between casts. Cadence follows the tooltip's

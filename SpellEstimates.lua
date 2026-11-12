@@ -158,27 +158,135 @@ function Estimates.GetExpectedAmount(model, text)
     return nil
 end
 
+local PERIODIC_AMOUNT = "([%d,]+)"
+local DIRECT_AMOUNT = "([%d][%d, to%-]*)"
+local DURATION = "(%d+) (sec%a*)"
+local SECONDS = { sec = true, secs = true, second = true, seconds = true }
+local TOTAL_GRAMMARS = {
+    corruption = "corrupts the target, causing " .. PERIODIC_AMOUNT .. " shadow damage over ",
+    pain = "a word of darkness that causes " .. PERIODIC_AMOUNT .. " shadow damage over ",
+    rejuvenation = "heals the target for " .. PERIODIC_AMOUNT .. " over ",
+    renew = "heals the target of " .. PERIODIC_AMOUNT .. " damage over ",
+    serpentSting = "stings the target, causing " .. PERIODIC_AMOUNT .. " nature damage over ",
+    mindFlay = "assault the target's mind with shadow energy, causing " .. PERIODIC_AMOUNT .. " shadow damage over ",
+}
+local MIXED_GRAMMARS = {
+    regrowth = "heals a friendly target for " .. DIRECT_AMOUNT .. " and another " .. PERIODIC_AMOUNT .. " over ",
+    burn = "burns the enemy for " .. DIRECT_AMOUNT .. " %s damage and then an additional "
+        .. PERIODIC_AMOUNT .. " %s damage over ",
+    holyFire = "consumes the enemy in holy flames that cause " .. DIRECT_AMOUNT .. " holy damage and an additional "
+        .. PERIODIC_AMOUNT .. " holy damage over ",
+    fireball = "hurls a fiery ball that causes " .. DIRECT_AMOUNT .. " fire damage and an additional "
+        .. PERIODIC_AMOUNT .. " fire damage over ",
+}
+
+local function ReadTooltipInteger(value)
+    if not value then return nil end
+    if value:match("^%d+$") then return tonumber(value) end
+    local leading, grouped = value:match("^(%d%d?%d?)(,%d.*)$")
+    if leading and grouped:gsub(",%d%d%d", "") == "" then
+        return tonumber((value:gsub(",", "")))
+    end
+    return nil
+end
+
+local function ReadTooltipAverage(value)
+    local low, high = value:match("^([%d,]+) to ([%d,]+)$")
+    if not low then low, high = value:match("^([%d,]+)%s*%-%s*([%d,]+)$") end
+    if not low then return ReadTooltipInteger(value) end
+    low, high = ReadTooltipInteger(low), ReadTooltipInteger(high)
+    if IsNonnegative(low) and IsNonnegative(high) and low <= high then
+        return low + (high - low) / 2
+    end
+    return nil
+end
+
+-- Tooltip amounts in the aura descriptions are full-effect totals. Missiles
+-- are the exception: the tooltip references the triggered spell's per-hit amount.
+function Estimates.GetPeriodicAmounts(model, text)
+    local effect = model.periodic
+    local grammar = effect.grammar
+    local direct, amount, duration, unit
+    text = text:lower():gsub("–", "-"):gsub("—", "-"):gsub("%s+", " ")
+    if grammar == "missiles" then
+        local prefix = "launches arcane missiles at the enemy, causing " .. PERIODIC_AMOUNT .. " arcane damage "
+        amount, duration, unit = text:match(prefix .. "each second for " .. DURATION .. "%.")
+        if not amount then
+            local interval, intervalUnit
+            amount, interval, intervalUnit, duration, unit =
+                text:match(prefix .. "every " .. DURATION .. " for " .. DURATION .. "%.")
+            if not SECONDS[intervalUnit] or tonumber(interval) ~= effect.interval then return nil end
+        end
+    elseif MIXED_GRAMMARS[grammar] then
+        local pattern = MIXED_GRAMMARS[grammar]
+        if grammar == "burn" then
+            -- Insert the school using literal replacements so the captures
+            -- in the Lua pattern keep their meaning.
+            pattern = pattern:gsub(" %%s ", " " .. model.school .. " ")
+        end
+        direct, amount, duration, unit = text:match(pattern .. DURATION .. "%.")
+        if not direct then return nil end
+    elseif grammar == "mindFlay" then
+        amount, duration, unit = text:match(TOTAL_GRAMMARS[grammar] .. DURATION .. " and slowing their movement speed by %d+%%%.")
+    else
+        amount, duration, unit = text:match(TOTAL_GRAMMARS[grammar] .. DURATION .. "%.")
+    end
+    if not SECONDS[unit] or tonumber(duration) ~= effect.duration then return nil end
+    local total = ReadTooltipInteger(amount)
+    if not IsNonnegative(total) or total == 0 then return nil end
+    if grammar == "missiles" then total = total * effect.ticks end
+    local directTotal = 0
+    if direct then
+        directTotal = ReadTooltipAverage(direct)
+        if not IsNonnegative(directTotal) or directTotal == 0 then return nil end
+    end
+    if not IsNonnegative(total) then return nil end
+    return directTotal, total
+end
+
 -- Equal-level PvE spell hit approximation. Healing is assumed to land.
 -- Melee uses sheet crit on landed hits, with no avoidance model.
-function Estimates.GetExpectedRate(kind, amount, cycle)
-    if not IsNonnegative(amount) or amount == 0 or not IsNonnegative(cycle) or cycle == 0 then return nil end
+function Estimates.GetExpectedRate(kind, amount, cycle, effect, tickTotal)
+    if not IsNonnegative(amount) or not IsNonnegative(cycle) or cycle == 0 then return nil end
+    if effect then
+        if not IsNonnegative(tickTotal) or tickTotal == 0 then return nil end
+    elseif amount == 0 then
+        return nil
+    end
+    local directCrit = not effect or effect.directCrit
+    local tickCrit = effect and effect.tickCrit
+    local needsCrit = (directCrit and amount > 0) or tickCrit
     local crit, hit, bonus
     if kind == "landed" then
-        crit, hit, bonus = ReadStat(GetCritChance), 100, 1
+        hit, bonus = 100, 1
     elseif kind == "healing" then
-        crit, hit, bonus = ReadStat(GetSpellCritChance), 100, 0.5
+        if effect and effect.hitMode ~= "none" then return nil end
+        hit, bonus = 100, 0.5
     elseif kind == "spell" then
+        if effect and effect.hitMode ~= "application" and effect.hitMode ~= "tick" then return nil end
         if not IsNonnegative(CR_HIT_SPELL) then return nil end
         local rating = ReadStat(GetCombatRatingBonus, CR_HIT_SPELL)
         local modifier = ReadStat(GetSpellHitModifier)
         if not rating or not modifier or not IsFinite(rating + modifier) then return nil end
         hit = math.min(100, math.max(0, 96 + rating + modifier))
-        crit, bonus = ReadStat(GetSpellCritChance), 0.5
+        bonus = 0.5
     else
         return nil
     end
-    if not IsNonnegative(crit) or crit > 100 then return nil end
-    local rate = (amount / cycle) * (hit / 100) * (1 + bonus * crit / 100)
+    if needsCrit then
+        if kind == "landed" then
+            crit = ReadStat(GetCritChance)
+        else
+            crit = ReadStat(GetSpellCritChance)
+        end
+        if not IsNonnegative(crit) or crit > 100 then return nil end
+    end
+    local critFactor = 1 + bonus * (crit or 0) / 100
+    local direct = amount * (directCrit and critFactor or 1)
+    local ticks = (tickTotal or 0) * (tickCrit and critFactor or 1)
+    -- An aura's application hit gates all damage. Independent missile hit
+    -- rolls have the same aggregate expectation and no additional parent roll.
+    local rate = ((direct + ticks) / cycle) * (hit / 100)
     if IsNonnegative(rate) then return rate, hit, crit end
     return nil
 end

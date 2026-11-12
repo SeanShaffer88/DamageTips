@@ -18,7 +18,8 @@ spellbook and see:
   - Mana cost: as a percentage of your max mana, an amount, or both
   - Mana sustain: affordable casts and estimated output before low mana (optional)
   - Caster spell stats: spell crit, school spell power and bonus healing (optional)
-  - Power scaling and expected DPS/HPS: selected Forever spell ranks (optional)
+  - Power scaling and expected DPS/HPS: selected direct, periodic and channeled
+    Forever spell ranks (optional)
 
 Spells with a damage range use the average; spells with a direct hit plus a
 damage-over-time effect count both (the DoT can be excluded in settings).
