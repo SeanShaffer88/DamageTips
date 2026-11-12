@@ -5,7 +5,7 @@ Licence: GNU General Public License v3.0 or later (see LICENSE.txt)
 
 Modification notice (2026-11-12)
 -------------------------------
-This beta modifies Malikor's DamageTips 1.4.0. It adds optional mana sustain,
+This release modifies Malikor's DamageTips 1.4.0. It adds optional mana sustain,
 caster stats, power scaling and expected output, and fixes the settings
 window, hidden-spell mana line and Renew classification. See CHANGELOG.txt
 for the full changes.
@@ -29,8 +29,10 @@ its base cooldown and any damage-over-time duration.
 
 Built for World of Warcraft: Forever, Interface 16001. API signatures for
 the estimates were checked against Blizzard's UI files for build
-1.60.1.70888. Version 1.5.0-beta.1 passed local Lua mock checks.
-In-game beta testing is pending.
+1.60.1.70888. Local Lua mock checks passed. During the live beta smoke check,
+the tester reported that options persisted, expected values appeared on
+druid healing spells, and no errors appeared. Live damage coverage and
+taint behavior remain unverified.
 
 Installation
 ------------
@@ -41,7 +43,7 @@ the game, or /reload.
 
 Rollback to 1.4.0
 -----------------
-Exit WoW completely. Replace the beta DamageTips folder in
+Exit WoW completely. Replace the current DamageTips folder in
 _forever_/Interface/AddOns/ with your backed-up 1.4.0 DamageTips folder.
 Keep your SavedVariables as they are unless you need to recover the old
 settings. In that case, restore your backed-up DamageTips SavedVariables

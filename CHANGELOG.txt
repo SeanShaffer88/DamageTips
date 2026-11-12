@@ -1,4 +1,4 @@
-1.5.0-beta.1
+1.5.0
 - Mana sustain estimates affordable casts and expected output before low
   mana. Caster spell stats show sheet crit, school spell power and bonus
   healing where applicable.
@@ -10,7 +10,9 @@
 - Enable the estimates in the Lines tab. The new options start off.
 - Fixed the settings window failing to open, hidden spells showing the
   mana line, and Renew's standard English tooltip appearing under damage.
-- Local Lua mock checks passed. In-game beta testing is pending.
+- Local Lua mock checks passed. The live beta smoke check covered saved
+  options and expected output for druid healing spells, with no errors
+  reported during that check.
 
 1.5.0-alpha.5
 - Expected output accounts for supported spell-specific talents, Fire
