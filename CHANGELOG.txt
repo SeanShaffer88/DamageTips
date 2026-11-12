@@ -1,3 +1,17 @@
+1.5.0-beta.1
+- Mana sustain estimates affordable casts and expected output before low
+  mana. Caster spell stats show sheet crit, school spell power and bonus
+  healing where applicable.
+- Nominal power scaling and expected damage or healing cover selected
+  direct, periodic and channeled spell ranks on Forever build 1.60.1.70888.
+- Expected DPS uses eligible PvE target levels and readable resistance or
+  armor. Supported estimates list contributing talents, Fire Blast's
+  Combustion stacks and Curse of the Elements when available.
+- Enable the estimates in the Lines tab. The new options start off.
+- Fixed the settings window failing to open, hidden spells showing the
+  mana line, and Renew's standard English tooltip appearing under damage.
+- Local Lua mock checks passed. In-game beta testing is pending.
+
 1.5.0-alpha.5
 - Expected output accounts for supported spell-specific talents, Fire
   Blast's active Combustion stacks, and an eligible target's Curse of the

@@ -3,6 +3,13 @@ DamageTips
 Author:  Malikor
 Licence: GNU General Public License v3.0 or later (see LICENSE.txt)
 
+Modification notice (2026-11-12)
+-------------------------------
+This beta modifies Malikor's DamageTips 1.4.0. It adds optional mana sustain,
+caster stats, power scaling and expected output, and fixes the settings
+window, hidden-spell mana line and Renew classification. See CHANGELOG.txt
+for the full changes.
+
 Adds extra lines to spell tooltips on your action bars and in the spellbook:
 
   * DPS               average damage per second
@@ -22,12 +29,23 @@ its base cooldown and any damage-over-time duration.
 
 Built for World of Warcraft: Forever, Interface 16001. API signatures for
 the estimates were checked against Blizzard's UI files for build
-1.60.1.70888. The alpha was verified with Lua mocks.
+1.60.1.70888. Version 1.5.0-beta.1 passed local Lua mock checks.
+In-game beta testing is pending.
 
 Installation
 ------------
+Before replacing an existing install, exit WoW and back up the DamageTips
+folder and its SavedVariables to a location outside Interface/AddOns/.
 Copy the DamageTips folder into _forever_/Interface/AddOns/ and restart
 the game, or /reload.
+
+Rollback to 1.4.0
+-----------------
+Exit WoW completely. Replace the beta DamageTips folder in
+_forever_/Interface/AddOns/ with your backed-up 1.4.0 DamageTips folder.
+Keep your SavedVariables as they are unless you need to recover the old
+settings. In that case, restore your backed-up DamageTips SavedVariables
+before restarting WoW.
 
 Settings
 --------
@@ -72,6 +90,8 @@ Notes
 -----
 * Power scaling and expected output use an exact spell-rank list for WoW
   Forever 1.60.1.70888 (Interface 16001). Both options start off.
+  On other builds, the scaling and expected lines are hidden. Base
+  tooltip metrics can still appear when the client provides readable data.
   The scaling lines show nominal changes per +100 stat before any
   additional talent or low-rank modifiers.
 * Supported caster families are Fire Blast, Lightning Bolt, Shadow Bolt,
@@ -99,9 +119,10 @@ Notes
   modifier line lists the effects used in the estimate.
 * For damage spells, Expected DPS checks the current target during tooltip
   refresh. Target level adjusts spell hit for attackable, living PvE
-  targets within three effective levels of the player. The target label
-  reports level only when school resistance is unavailable, restricted,
-  zero, or outside the Holy damage model. Ineligible targets and
+  targets within three effective levels of the player. When school
+  resistance is unavailable, restricted, zero, or outside the Holy
+  damage model, the target label reads "level only" or "level + aura"
+  if Curse of the Elements contributes. Ineligible targets and
   unsupported level differences use the equal-level estimate.
 * Positive readable resistance uses the combat-log fitted mean
   R / (R + 8L + 19), where L is the player's effective level. Direct
