@@ -27,12 +27,11 @@ sustain estimates, caster spell stats, power scaling and expected output.
 Time basis for DPS: the longest of cast time, the spell's global cooldown,
 its base cooldown and any damage-over-time duration.
 
-Built for World of Warcraft: Forever, Interface 16001. API signatures for
-the estimates were checked against Blizzard's UI files for build
-1.60.1.70888. Local Lua mock checks passed. During the live beta smoke check,
-the tester reported that options persisted, expected values appeared on
-druid healing spells, and no errors appeared. Live damage coverage and
-taint behavior remain unverified.
+Built for World of Warcraft: Forever, Interface 16001. Build 70938 coverage
+is limited to ranks verified against client data. Local Lua mocks test model
+selection and estimate output. The earlier live smoke check used the 70888
+beta and covered druid healing and saved options. The 70938 estimates and
+combat taint behavior still need in-game verification.
 
 Installation
 ------------
@@ -70,6 +69,7 @@ Commands
 --------
 /damagetips         Open the settings window
 /damagetips help    Show the command list
+/dtips status       Show the client build, model coverage and estimate settings
 /damagetips dps     Toggle DPS
 /damagetips dpm     Toggle DPM
 /damagetips mana    Toggle the mana cost line
@@ -90,10 +90,13 @@ Commands
 
 Notes
 -----
-* Power scaling and expected output use an exact spell-rank list for WoW
-  Forever 1.60.1.70888 (Interface 16001). Both options start off.
-  On other builds, the scaling and expected lines are hidden. Base
-  tooltip metrics can still appear when the client provides readable data.
+* Power scaling and expected output use exact spell-rank lists for WoW
+  Forever 1.60.1 (Interface 16001). Build 70888 retains its original model
+  list. Build 70938 enables only spell ranks individually verified for that
+  build. On unverified builds, the scaling and expected lines are hidden.
+  Both options start off. Use /dtips status to check the detected build,
+  verified spell ID count and current settings. Base tooltip metrics can
+  still appear when the client provides readable data.
   The scaling lines show nominal changes per +100 stat before any
   additional talent or low-rank modifiers.
 * Supported caster families are Fire Blast, Lightning Bolt, Shadow Bolt,

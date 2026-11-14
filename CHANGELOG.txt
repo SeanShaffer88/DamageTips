@@ -1,3 +1,9 @@
+Unreleased
+- Enable individually verified spell models on WoW Forever 1.60.1.70938.
+  Preserve build 70888 support and disable models on unverified builds.
+- Add /dtips status to show the detected client, verified model count and
+  current power scaling and expected DPS/HPS settings.
+
 1.6.0
 - Updated the addon version to 1.6.0.
 
