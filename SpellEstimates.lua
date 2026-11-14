@@ -286,9 +286,7 @@ local function ReadBloodthirst(text, model)
         if not percent then percent, flat = text:match(prefix .. " ") end
     end
     if tonumber(percent) ~= model.attackPower * 100 then return nil end
-    flat = ReadInteger(flat)
-    local power = flat and ReadAttackPower()
-    if power then return flat + model.attackPower * power end
+    return ReadInteger(flat)
 end
 
 local SCHOOL = { physical = true, holy = true, fire = true, nature = true, frost = true, shadow = true, arcane = true }
@@ -382,7 +380,6 @@ local function ReadUnmodeled(text)
 end
 
 local function ReadExpectedDirect(kind, text, model, damage, healing)
-    if kind == "landed" then return ReadBloodthirst(text, model) end
     local component, low, high
     if kind == "healing" then
         component = healing
@@ -416,10 +413,23 @@ function Estimates.ParseComponents(text, model, wantsExpected)
     local damage, heal, absorb, hasPeriodic = ReadUnmodeled(text)
     result.damage, result.healing, result.absorb = damage, heal, absorb
     if wantsExpected and kind and not model.periodic and not hasPeriodic then
-        result.expectedAmount = ReadExpectedDirect(kind, text, model, damage, heal)
+        if kind == "landed" then
+            result.attackPowerBase = ReadBloodthirst(text, model)
+        else
+            result.expectedAmount = ReadExpectedDirect(kind, text, model, damage, heal)
+        end
     end
-    if damage or heal or absorb or result.expectedAmount then result.status = "parsed" end
+    if damage or heal or absorb or result.expectedAmount or result.attackPowerBase then result.status = "parsed" end
     return result
+end
+
+function Estimates.ResolveExpectedAmount(parsed, model)
+    if parsed.attackPowerBase then
+        local power = ReadAttackPower()
+        if power then return parsed.attackPowerBase + model.attackPower * power end
+    else
+        return parsed.expectedAmount
+    end
 end
 
 local LEVEL_MISS = { [-3] = 1, [-2] = 2, [-1] = 3, [0] = 4, [1] = 5, [2] = 6, [3] = 17 }

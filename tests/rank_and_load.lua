@@ -83,7 +83,9 @@ end
 GameTooltip = {}
 function GameTooltip:IsShown() return true end
 function GameTooltip:GetOwner() return owner end
-function GameTooltip:HookScript(_, callback) self.onClear = callback end
+function GameTooltip:HookScript(event, callback)
+    if event == "OnTooltipCleared" then self.onClear = callback end
+end
 function GameTooltip:SetAction() tooltipLines = {}; self.onClear() end
 GameTooltip.SetSpellBookItem = GameTooltip.SetAction
 function GameTooltip:AddLine(line) tooltipLines[#tooltipLines + 1] = line end

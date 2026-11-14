@@ -33,7 +33,6 @@ local IsSecret = issecretvalue or function() return false end
 ----------------------------------------------------------------------
 -- Constants
 ----------------------------------------------------------------------
-local CACHE_TTL = 1.0    -- seconds a computed result is reused while hovering
 local FONT_MIN, FONT_MAX = 8, 20
 local MANA = (Enum and Enum.PowerType and Enum.PowerType.Mana) or 0
 local BANK_PLAYER = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
@@ -189,18 +188,51 @@ local function InitDB()
 end
 
 ----------------------------------------------------------------------
--- Result cache (recycled entry tables, no per-hover allocations)
+-- Bounded cache for public parsed spell text only
 ----------------------------------------------------------------------
--- Blizzard re-runs the tooltip setter periodically while the mouse rests on a
--- button, so the computed lines are reused for CACHE_TTL seconds per spell.
-local cache = {}     -- [spellID] = entry
-local entryPool = {} -- recycled entries
+local PARSE_CACHE_SIZE, MAX_CACHED_TEXT_BYTES = 64, 8192
+local parseCache, parseSlots, nextParseSlot = {}, {}, 1
+local PET_BOOK = 3
 
 local function InvalidateCache()
-    for id, e in pairs(cache) do
-        entryPool[#entryPool + 1] = e
-        cache[id] = nil
+    wipe(parseCache)
+    wipe(parseSlots)
+    nextParseSlot = 1
+end
+
+local function RemoveParseEntry(spellID, source)
+    local entries = parseCache[source]
+    if not entries then return end
+    local entry = entries[spellID]
+    if not entry then return end
+    entries[spellID], parseSlots[entry.slot] = nil, nil
+end
+
+local function ParsePublicText(spellID, source, text, model, wantsExpected)
+    if #text > MAX_CACHED_TEXT_BYTES then
+        RemoveParseEntry(spellID, source)
+        return Estimates.ParseComponents(text, model, wantsExpected)
     end
+    local entries = parseCache[source]
+    if not entries then entries = {}; parseCache[source] = entries end
+    local entry = entries[spellID]
+    -- Locale is fixed for the session, as it is in the parser. Model identity
+    -- is resolved from the exact build separately on each relevant hover.
+    if entry and entry.text == text and entry.model == model and entry.wantsExpected == wantsExpected then
+        return entry.parsed
+    end
+
+    local parsed = Estimates.ParseComponents(text, model, wantsExpected)
+    if not entry then
+        local slot = nextParseSlot
+        local old = parseSlots[slot]
+        if old then RemoveParseEntry(old.spellID, old.source) end
+        entry = { spellID = spellID, source = source, slot = slot }
+        entries[spellID], parseSlots[slot] = entry, entry
+        nextParseSlot = slot % PARSE_CACHE_SIZE + 1
+    end
+    entry.text, entry.model, entry.wantsExpected, entry.parsed = text, model, wantsExpected, parsed
+    return parsed
 end
 
 local function CopyColor(dst, src)
@@ -208,7 +240,6 @@ local function CopyColor(dst, src)
 end
 
 local function SettingsChanged(minimapChanged)
-    InvalidateCache()
     if minimapChanged then
         BuildMinimapButton()
     end
@@ -573,7 +604,7 @@ local AddSpellInfo, ResolveTooltipSpell -- defined in the hook section
 local function ClearTooltipContext()
     cur.generation = cur.generation + 1
     cur.spellID, cur.owner, cur.kind, cur.slot, cur.arg, cur.source = nil, nil, nil, nil, nil, nil
-    cur.added = false
+    cur.added, cur.processed = false, false
 end
 
 local errorShown = false
@@ -615,13 +646,12 @@ end
 
 local function InvalidateSpellText(spellID)
     rankIndexDirty = true
-    if not DB then return end
-    if DB.showNextRank or not IsWholeNumber(spellID, 1) then
-        -- A newly readable higher rank can change a different spell's display.
-        for _, e in pairs(cache) do e.stamp = -math.huge end
-    elseif IsWholeNumber(spellID, 1) then
-        local e = cache[spellID]
-        if e then e.stamp = -math.huge end
+    if IsWholeNumber(spellID, 1) then
+        RemoveParseEntry(spellID, ACTION)
+        RemoveParseEntry(spellID, BOOK)
+        RemoveParseEntry(spellID, PET_BOOK)
+    else
+        InvalidateCache()
     end
 end
 
@@ -675,11 +705,12 @@ end)
 ----------------------------------------------------------------------
 -- Computes every number for a spell. `light` skips healing and next-rank
 -- (used when computing the next rank itself, to avoid chaining).
-local function Compute(spellID, light, estimate, powerModel, isPet)
-    local text, secret, loaded = GetSpellText(spellID, isPet)
-    local t = { secret = secret, loaded = loaded }
+local function Compute(spellID, light, estimate, powerModel, source)
+    local text, secret, loaded = GetSpellText(spellID, source == PET_BOOK)
+    local t = {}
+    if not loaded or secret then RemoveParseEntry(spellID, source) end
     if not loaded and not secret then
-        t.requested = RequestSpellData(spellID)
+        RequestSpellData(spellID)
     end
     if DEBUG then Print("spell text: " .. (text ~= "" and text or "<none / secret>")) end
 
@@ -693,14 +724,19 @@ local function Compute(spellID, light, estimate, powerModel, isPet)
     estimate = estimate and loaded and not secret
     local wantsSustain = estimate and DB.showManaSustain
     local wantsExpected = estimate and powerModel and powerModel.expected
-        and DB.showExpectedThroughput and type(rule) ~= "number"
+        and DB.showExpectedThroughput and type(rule) ~= "number" or false
     t.powerModel = estimate and powerModel
     t.baselineDamage = DB.showDPS or DB.showDPM or DB.showDPC or DB.showRange or DB.showDPMana
     if DB.showMana or DB.showDPMana or wantsSustain then
         t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, wantsSustain)
     end
 
-    local parsed = Estimates.ParseComponents(text, powerModel, wantsExpected)
+    local parsed
+    if loaded and not secret then
+        parsed = ParsePublicText(spellID, source, text, powerModel, wantsExpected)
+    else
+        parsed = {}
+    end
     local damage, healing = parsed.damage, parsed.healing
     if type(rule) == "number" then
         t.total, t.lo, t.hi = rule, rule, rule
@@ -723,7 +759,7 @@ local function Compute(spellID, light, estimate, powerModel, isPet)
     if effect then
         t.tickTotal = (damage or healing).periodic
     end
-    local expectedAmount = wantsExpected and parsed.expectedAmount
+    local expectedAmount = wantsExpected and Estimates.ResolveExpectedAmount(parsed, t.powerModel)
     if expectedAmount == 0 and not effect then expectedAmount = nil end
 
     if damageTiming or healingTiming or expectedAmount then
@@ -752,7 +788,7 @@ local function Compute(spellID, light, estimate, powerModel, isPet)
     if not light and t.baselineDamage and DB.showNextRank and t.dps and t.dps > 0 then
         local nextID = NextRankSpellID(spellID)
         if nextID then
-            local nt = Compute(nextID, true)
+            local nt = Compute(nextID, true, false, nil, BOOK)
             if nt and nt.dps then t.nextDPS = nt.dps end
         end
     end
@@ -760,16 +796,9 @@ local function Compute(spellID, light, estimate, powerModel, isPet)
     return t, estimate
 end
 
-local function BuildEntry(e, spellID, now, estimate, powerModel, isPet)
-    e.dmgLine, e.dpcLine, e.rangeLine, e.effLine = false, false, false, false
-    e.healLine, e.heffLine, e.absorbLine, e.nextLine, e.manaLine = false, false, false, false, false
-    e.detailLines, e.schoolColor = nil, nil
-    e.stamp = now
-
-    local t, readableEstimate = Compute(spellID, false, estimate, powerModel, isPet)
-    if not t.loaded then
-        e.stamp = -math.huge -- allow a new hover to notice loaded data or retry
-    end
+local function GetEntry(spellID, estimate, powerModel, source)
+    local e = {}
+    local t, readableEstimate = Compute(spellID, false, estimate, powerModel, source)
 
     if t.baselineDamage and t.total and t.total > 0 then
         if t.dps and (DB.showDPS or DB.showDPM) then e.dmgLine = DamageLineText(t.dps) end
@@ -796,21 +825,7 @@ local function BuildEntry(e, spellID, now, estimate, powerModel, isPet)
         end
         e.manaLine = ManaLineText(t.cost, maxMana)
     end
-    if readableEstimate then return t end
-end
-
-local function GetEntry(spellID, estimate, powerModel, isPet)
-    local now = GetTime()
-    local e = cache[spellID]
-    if not estimate and e and e.isPet == isPet and (now - e.stamp) < CACHE_TTL then return e end
-
-    if not e then
-        e = entryPool[#entryPool]
-        if e then entryPool[#entryPool] = nil else e = {} end
-        cache[spellID] = e
-    end
-    e.isPet = isPet
-    return e, BuildEntry(e, spellID, now, estimate, powerModel, isPet)
+    return e, readableEstimate and t
 end
 
 ----------------------------------------------------------------------
@@ -849,6 +864,7 @@ GameTooltip:HookScript("OnTooltipCleared", function()
     styledCount = 0
     ClearTooltipContext()
 end)
+GameTooltip:HookScript("OnHide", ClearTooltipContext)
 
 local function AddPowerLines(tooltip, t, dmgColor)
     local model = t.powerModel
@@ -929,13 +945,13 @@ local function AddEstimateLines(tooltip, t, dmgColor)
     return AddPowerLines(tooltip, t, dmgColor) or added
 end
 
-AddSpellInfo = function(tooltip, spellID, source)
+AddSpellInfo = function(tooltip, spellID, source, nativeShow)
     if not DB or not spellID then return end
     local model = source and Estimates.GetSpellModel(spellID)
     local estimate = source and (DB.showManaSustain or DB.showCasterStats
         or (model and (DB.showPowerScaling or DB.showExpectedThroughput)))
         and Estimates.IsKnownPlayerSpell(spellID, source == ACTION)
-    local e, estimateData = GetEntry(spellID, estimate, model, source == nil)
+    local e, estimateData = GetEntry(spellID, estimate, model, source or PET_BOOK)
     local added = false
     local dmgColor = e.schoolColor or DB.damageColor
 
@@ -963,7 +979,7 @@ AddSpellInfo = function(tooltip, spellID, source)
 
     if added then
         cur.added = true
-        tooltip:Show() -- resize the tooltip to fit new lines
+        if not nativeShow then tooltip:Show() end -- native processing calls Show after all post-calls
     end
 end
 
@@ -1013,28 +1029,66 @@ ResolveTooltipSpell = function(kind, slot, arg)
     if IsWholeNumber(spellID, 1) then return spellID, source end
 end
 
-local function OnTooltipHook(tooltip, kind, slot, arg)
-    if tooltip ~= GameTooltip or (tooltip.IsForbidden and tooltip:IsForbidden()) then return end
-    ClearTooltipContext()
+local function IsMainTooltip(tooltip)
+    return not IsSecret(tooltip) and tooltip == GameTooltip
+        and not (tooltip.IsForbidden and tooltip:IsForbidden())
+end
+
+local function RenderTooltip(tooltip, kind, slot, arg, nativeShow)
     local spellID, source = ResolveTooltipSpell(kind, slot, arg)
     if not spellID then return end
     local owner = tooltip:GetOwner()
     if not IsSecret(owner) and owner ~= nil then
         cur.spellID, cur.owner, cur.kind, cur.slot, cur.arg, cur.source = spellID, owner, kind, slot, arg, source
     end
-    AddSpellInfo(tooltip, spellID, source)
+    AddSpellInfo(tooltip, spellID, source, nativeShow)
 end
 
-if GameTooltip.SetAction then
-    hooksecurefunc(GameTooltip, "SetAction", function(tooltip, slot)
-        RunTooltipHandler(OnTooltipHook, tooltip, ACTION, slot)
-    end)
+local function OnTooltipHook(tooltip, kind, slot, arg)
+    if not IsMainTooltip(tooltip) then return end
+    ClearTooltipContext()
+    RenderTooltip(tooltip, kind, slot, arg)
 end
 
-if GameTooltip.SetSpellBookItem then
-    hooksecurefunc(GameTooltip, "SetSpellBookItem", function(tooltip, slot, bank)
-        RunTooltipHandler(OnTooltipHook, tooltip, BOOK, slot, bank)
+local function OnTooltipPostCall(tooltip, data)
+    if tooltip.IsForbidden and tooltip:IsForbidden() then return end
+    local info = tooltip:GetProcessingTooltipInfo()
+    if IsSecret(info) or type(info) ~= "table" then return end
+    local getter = info.getterName
+    if IsSecret(getter) or (getter ~= "GetAction" and getter ~= "GetSpellBookItem") then return end
+    local primary = tooltip:GetPrimaryTooltipInfo()
+    if IsSecret(primary) or primary ~= info then return end
+    local append, args = info.append, info.getterArgs
+    if IsSecret(append) or append or IsSecret(args) or type(args) ~= "table" then return end
+    local tooltipData = info.tooltipData
+    if IsSecret(tooltipData) or IsSecret(data) or type(data) ~= "table" or tooltipData ~= data then return end
+    -- A native reprocess calls ClearLines before this post-call, even when the
+    -- new data uses the same instance ID. For this pass append at most once.
+    cur.processed = true
+    RenderTooltip(tooltip, getter == "GetAction" and ACTION or BOOK, args[1], args[2], true)
+end
+
+if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and TooltipDataProcessor.AllTypes
+    and GameTooltip.GetProcessingTooltipInfo and GameTooltip.GetPrimaryTooltipInfo then
+    -- GetAction/GetSpellBookItem do not promise a tooltip enum for every
+    -- source (e.g. macros). Route on the exact native getter then resolve
+    -- spell/macro identity, with no setter post-hooks in this mode.
+    TooltipDataProcessor.AddTooltipPostCall(TooltipDataProcessor.AllTypes, function(tooltip, data)
+        if DB and not cur.processed and not IsSecret(tooltip) and tooltip == GameTooltip then
+            RunTooltipHandler(OnTooltipPostCall, tooltip, data)
+        end
     end)
+else
+    if GameTooltip.SetAction then
+        hooksecurefunc(GameTooltip, "SetAction", function(tooltip, slot)
+            RunTooltipHandler(OnTooltipHook, tooltip, ACTION, slot)
+        end)
+    end
+    if GameTooltip.SetSpellBookItem then
+        hooksecurefunc(GameTooltip, "SetSpellBookItem", function(tooltip, slot, bank)
+            RunTooltipHandler(OnTooltipHook, tooltip, BOOK, slot, bank)
+        end)
+    end
 end
 
 ----------------------------------------------------------------------
@@ -1436,7 +1490,6 @@ local function CreateConfig()
     clearRules:SetText("Clear all spell rules")
     clearRules:SetScript("OnClick", function()
         wipe(DB.spellRules)
-        InvalidateCache()
         RefreshConfig()
         Print("spell rules cleared")
     end)
@@ -1770,7 +1823,6 @@ SlashCmdList["DAMAGETIPS"] = function(msg)
         Print(toggle.label .. " " .. OnOff(DB[toggle.key]))
     elseif cmd == "debug" then
         DEBUG = not DEBUG
-        InvalidateCache() -- so the next hover prints the spell text
         Print("debug " .. OnOff(DEBUG))
         if DEBUG and GetBuildInfo then
             local version, build = GetBuildInfo()
