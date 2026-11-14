@@ -10,6 +10,7 @@ local BANK_PLAYER = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBan
 local BANK_PET = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Pet) or 1
 local SCHOOL_INDEX = { holy = 2, fire = 3, nature = 4, frost = 5, shadow = 6, arcane = 7 }
 local MODELS = addon.SpellPowerModels
+local MODELS_70938 = addon.SpellPowerModels70938
 local Modifiers = addon.SpellModifiers
 
 local function IsFinite(value)
@@ -50,10 +51,13 @@ end
 
 function Estimates.GetSpellModel(spellID)
     if not IsFinite(spellID) or spellID <= 0 or spellID ~= math.floor(spellID) then return nil end
-    local model = MODELS[spellID]
-    if not model then return nil end
+    local model, buildOnlyModel = MODELS[spellID], MODELS_70938[spellID]
+    if not model and not buildOnlyModel then return nil end
     local modelBuild = ReadModelBuild()
-    if IsModelVerified(modelBuild, spellID) then
+    if modelBuild == "70938" and buildOnlyModel then
+        return buildOnlyModel
+    end
+    if model and IsModelVerified(modelBuild, spellID) then
         return model
     end
     return nil
@@ -69,6 +73,9 @@ function Estimates.GetModelBuildStatus()
             if IsModelVerified(modelBuild, spellID) then
                 verifiedCount = verifiedCount + 1
             end
+        end
+        if modelBuild == "70938" then
+            for _ in pairs(MODELS_70938) do verifiedCount = verifiedCount + 1 end
         end
         if verifiedCount > 0 then status = "verified" end
     end
@@ -205,6 +212,7 @@ local TOTAL_GRAMMARS = {
     corruption = "corrupts the target, causing " .. INTEGER .. " shadow damage over ",
     pain = "a word of darkness that causes " .. INTEGER .. " shadow damage over ",
     rejuvenation = "heals the target for " .. INTEGER .. " over ",
+    wildGrowth = "^heals the target and their party for " .. INTEGER .. " over ",
     renew = "heals the target of " .. INTEGER .. " damage over ",
     serpentSting = "stings the target, causing " .. INTEGER .. " nature damage over ",
     mindFlay = "assault the target's mind with shadow energy, causing " .. INTEGER .. " shadow damage over ",

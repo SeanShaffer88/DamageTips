@@ -301,6 +301,10 @@ local function PowerScalingLineText(stat, coefficient, output, unit)
 end
 
 local function PeriodicScalingLineText(stat, effect, output)
+    if effect.perRecipient then
+        return string_format("+100 %s: +%s total %s per recipient (nominal)",
+            stat, FormatPowerGain(effect.coefficient * effect.ticks), output)
+    end
     return string_format("+100 %s: +%s %s / tick (+%s over %d ticks)",
         stat, FormatPowerGain(effect.coefficient), output,
         FormatPowerGain(effect.coefficient * effect.ticks), effect.ticks)
@@ -320,6 +324,7 @@ local function ExpectedLineText(kind, rate, hit, crit, effect, target, modifiers
         local period = effect.channel and (effect.channel .. " channel") or "full effect"
         local critText = crit and string_format("%.1f%% crit", crit) or "no crit rolls"
         if kind == "healing" then
+            if effect.perRecipient then period = "per recipient, " .. period end
             if modifiers and modifiers.tickCrit then
                 critText = string_format("%.1f%% direct crit, %.1f%% tick crit", crit, modifiers.tickCrit)
             end
@@ -366,18 +371,19 @@ local function DPCLineText(total)
     return "Damage per cast: " .. FormatNumber(string_format("%.0f", total))
 end
 
-local function HealLineText(hps)
+local function HealLineText(hps, perRecipient)
     if not DB.showHealing or not hps or hps <= 0 then return false end
     local a = "HPS: " .. FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], hps))
     local b = "HPM: " .. FormatNumber(string_format("%.0f", hps * 60))
-    return a .. "   " .. b
+    return a .. "   " .. b .. (perRecipient and " (per recipient)" or "")
 end
 
-local function HealEffLineText(htotal, cost)
+local function HealEffLineText(htotal, cost, perRecipient)
     if not DB.showDPMana or not DB.showHealing or not cost or cost <= 0 or not htotal or htotal <= 0 then
         return false
     end
-    return "Healing per mana: " .. FormatNumber(string_format("%.2f", htotal / cost))
+    local label = perRecipient and "Healing per mana (per recipient): " or "Healing per mana: "
+    return label .. FormatNumber(string_format("%.2f", htotal / cost))
 end
 
 local function AbsorbLineText(absorb)
@@ -421,7 +427,8 @@ local function BuildDetailLines(t, damage, healing, absorb)
     end
     if healing then
         direct("Direct healing", t.hLo, t.hHi)
-        periodic("Healing over time", t.hot, t.hotDur)
+        periodic(t.healingPerRecipient and "Healing over time per recipient" or "Healing over time",
+            t.hot, t.hotDur)
         if t.htime then add(string_format("Healing divisor: %.2f sec", t.htime)) end
     end
     if absorb then add("Absorb per cast: " .. amount(t.absorb)) end
@@ -738,6 +745,7 @@ local function Compute(spellID, light, estimate, powerModel, source)
         parsed = {}
     end
     local damage, healing = parsed.damage, parsed.healing
+    t.healingPerRecipient = healing and parsed.effect and parsed.effect.perRecipient
     if type(rule) == "number" then
         t.total, t.lo, t.hi = rule, rule, rule
     elseif damage and (t.baselineDamage or estimate) then
@@ -810,8 +818,8 @@ local function GetEntry(spellID, estimate, powerModel, source)
     end
 
     if DB.showHealing and t.htotal and t.htotal > 0 then
-        e.healLine = HealLineText(t.hps)
-        e.heffLine = HealEffLineText(t.htotal, t.cost)
+        e.healLine = HealLineText(t.hps, t.healingPerRecipient)
+        e.heffLine = HealEffLineText(t.htotal, t.cost, t.healingPerRecipient)
     end
     e.absorbLine = AbsorbLineText(t.absorb)
     e.detailLines = BuildDetailLines(t, e.dmgLine or e.dpcLine or e.rangeLine or e.effLine or e.nextLine,
@@ -923,7 +931,8 @@ local function AddEstimateLines(tooltip, t, dmgColor)
         end
         local damage = OutputBeforeLowManaText(casts, t.total, "damage")
         if damage then AddStyledLine(tooltip, damage, dmgColor) end
-        local healing = OutputBeforeLowManaText(casts, t.htotal, "healing")
+        local healing = OutputBeforeLowManaText(casts, t.htotal,
+            t.healingPerRecipient and "healing per recipient" or "healing")
         if healing then AddStyledLine(tooltip, healing, DB.healColor) end
     end
     if DB.showCasterStats then
