@@ -20,16 +20,59 @@ local function IsNonnegative(value)
     return IsFinite(value) and value >= 0
 end
 
-function Estimates.GetSpellModel(spellID)
-    if not IsNonnegative(spellID) or spellID == 0 then return nil end
-    local model = MODELS[spellID]
-    if not model or not GetBuildInfo then return nil end
+local function ReadModelBuild()
+    if not GetBuildInfo then return end
     local ok, version, build, _, interface = pcall(GetBuildInfo)
-    if not ok or IsSecret(version) or IsSecret(build) or IsSecret(interface) then return nil end
-    if version == "1.60.1" and (build == "70888" or build == 70888) and interface == 16001 then
+    if not ok then return end
+    if IsSecret(version) or type(version) ~= "string" or not version:match("^%d+%.%d+%.%d+$") then
+        version = nil
+    end
+    -- GetBuildInfo normally returns a string build number.
+    if IsFinite(build) and build > 0 and build == math.floor(build) then
+        build = tostring(build)
+    elseif IsSecret(build) or type(build) ~= "string" or not build:match("^%d+$") then
+        build = nil
+    end
+    if not IsFinite(interface) or interface <= 0 or interface ~= math.floor(interface) then
+        interface = nil
+    end
+    local modelBuild
+    if version == "1.60.1" and interface == 16001 and (build == "70888" or build == "70938") then
+        modelBuild = build
+    end
+    return modelBuild, version, build, interface
+end
+
+local function IsModelVerified(modelBuild, spellID)
+    return modelBuild == "70888" or (modelBuild == "70938"
+        and addon.Verified70938 and addon.Verified70938[spellID] == true)
+end
+
+function Estimates.GetSpellModel(spellID)
+    if not IsFinite(spellID) or spellID <= 0 or spellID ~= math.floor(spellID) then return nil end
+    local model = MODELS[spellID]
+    if not model then return nil end
+    local modelBuild = ReadModelBuild()
+    if IsModelVerified(modelBuild, spellID) then
         return model
     end
     return nil
+end
+
+function Estimates.GetModelBuildStatus()
+    local modelBuild, version, build, interface = ReadModelBuild()
+    local status, verifiedCount = "unverified", 0
+    if not (version and build and interface) then
+        status = "unreadable"
+    elseif modelBuild then
+        for spellID in pairs(MODELS) do
+            if IsModelVerified(modelBuild, spellID) then
+                verifiedCount = verifiedCount + 1
+            end
+        end
+        if verifiedCount > 0 then status = "verified" end
+    end
+    return status, version, build, interface, verifiedCount
 end
 
 function Estimates.IsKnownPlayerSpell(spellID, fromAction)

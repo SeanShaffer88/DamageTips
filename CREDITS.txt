@@ -11,6 +11,11 @@ References
     ideas of showing scaling and hit/crit-adjusted output:
     https://github.com/coolmodi/SpellCalc/tree/c6b53a7c07c90d7f7c261f8aa71b5a3e9d5ebd6c
     DamageTips implements these features against the Forever client APIs.
+  - WoW Forever 1.60.1.70938 build coverage uses the corresponding Wago Tools
+    exports and Blizzard's November 2026 hotfix notes. See the source
+    repository's docs/forever-70938-validation.md for reproducible validation.
+    https://wago.tools/db2/SpellEffect/csv?build=1.60.1.70938
+    https://worldofwarcraft.blizzard.com/en-gb/news/24315281/wow-forever-hotfixes-november-9-2026
   - WoW Forever 1.60.1.70888 client tables, extracted by Wago Tools.
     SpellEffect coefficients and effect types were cross-checked against
     the ranked English descriptions, school/flags, class and spell levels.

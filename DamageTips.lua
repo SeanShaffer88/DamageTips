@@ -1676,9 +1676,25 @@ end
 ----------------------------------------------------------------------
 local function OnOff(v) return v and "|cff00ff00on|r" or "|cffff4040off|r" end
 
+local function ShowStatus()
+    local status, version, build, interface, verifiedCount = Estimates.GetModelBuildStatus()
+    Print(string_format("Client: version %s, build %s, Interface %s.",
+        version or "unavailable", build or "unavailable", interface and tostring(interface) or "unavailable"))
+    if status == "verified" then
+        Print(string_format("Spell models: enabled for %d verified spell IDs.", verifiedCount))
+    elseif status == "unreadable" then
+        Print("Spell models: disabled because client build information is unavailable.")
+    else
+        Print("Spell models: disabled on this unverified client build.")
+    end
+    Print("Settings: power scaling " .. OnOff(DB.showPowerScaling)
+        .. ", expected DPS/HPS " .. OnOff(DB.showExpectedThroughput) .. ".")
+end
+
 local function ShowHelp()
     Print("commands:")
     print("  |cffffd100/damagetips|r - open the settings window")
+    print("  |cffffd100/dtips status|r - show client and spell model compatibility")
     print("  |cffffd100/damagetips dps|r - toggle DPS (" .. OnOff(DB.showDPS) .. ")")
     print("  |cffffd100/damagetips dpm|r - toggle DPM (" .. OnOff(DB.showDPM) .. ")")
     print("  |cffffd100/damagetips mana|r - toggle mana cost line (" .. OnOff(DB.showMana) .. ")")
@@ -1720,6 +1736,8 @@ SlashCmdList["DAMAGETIPS"] = function(msg)
         ToggleConfig()
     elseif cmd == "help" then
         ShowHelp()
+    elseif cmd == "status" then
+        ShowStatus()
     elseif toggle then
         SetOption(toggle.key, not DB[toggle.key])
         RefreshConfig()
