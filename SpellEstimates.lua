@@ -161,131 +161,264 @@ local function ReadAttackPower()
     return nil
 end
 
-local function ParseAmount(text, prefix, suffix)
-    local low, high = text:match(prefix .. "(%d+)%s+to%s+(%d+)" .. suffix)
-    if not low then low, high = text:match(prefix .. "(%d+)%s*%-%s*(%d+)" .. suffix) end
-    if low then
-        low, high = tonumber(low), tonumber(high)
-        if low <= high then return low + (high - low) / 2 end
-        return nil
-    end
-    return tonumber(text:match(prefix .. "(%d+)" .. suffix))
-end
 
-function Estimates.GetExpectedAmount(model, text)
-    local kind = model.expected
-    if not kind then return nil end
-    text = text:lower():gsub("(%d),(%d)", "%1%2"):gsub("–", "-"):gsub("—", "-")
-    if text:find("damage%s+every%s+%d") or text:find("health%s+every%s+%d") then return nil end
-    if kind == "spell" then
-        local suffix = "%s+" .. model.school .. "%s+damage"
-        return ParseAmount(text, "for%s+", suffix .. "%.")
-            or ParseAmount(text, "causing%s+", suffix .. "%.")
-            or ParseAmount(text, "causes%s+", suffix .. "%s+to the target%.")
-    elseif kind == "healing" then
-        return ParseAmount(text, "heals a friendly target for%s+", "%.")
-            or ParseAmount(text, "heals a friendly target for%s+", "%s+health%.")
-            or ParseAmount(text, "heal your target for%s+", "%.")
-            or ParseAmount(text, "heal your target for%s+", "%s+health%.")
-            or ParseAmount(text, "heals a single target for%s+", "%.")
-            or ParseAmount(text, "heals a single target for%s+", "%s+health%.")
-    end
-
-    -- Bloodthirst's live text expresses a formula, not a ready-scaled amount.
-    local percent, flat = text:match("damage equal to (%d+)%% of your attack power plus (%d+) and increasing")
-    if not percent then
-        percent, flat = text:match("damage equal to (%d+)%% of your attack power plus (%d+)%.")
-    end
-    if tonumber(percent) ~= model.attackPower * 100 then return nil end
-    local power = ReadAttackPower()
-    if power then return tonumber(flat) + model.attackPower * power end
-    return nil
-end
-
-local PERIODIC_AMOUNT = "([%d,]+)"
-local DIRECT_AMOUNT = "([%d][%d, to%-]*)"
+local AMOUNT = "([%d,%.][%d,%. to%-]*)"
+local INTEGER = "([%d,%.]+)"
 local DURATION = "(%d+) (sec%a*)"
 local SECONDS = { sec = true, secs = true, second = true, seconds = true }
+
+local function ReadInteger(value)
+    if not value then return nil end
+    if not value:match("^%d+$") then
+        local _, grouped = value:match("^(%d%d?%d?)(,%d.*)$")
+        if not grouped or grouped:gsub(",%d%d%d", "") ~= "" then return nil end
+        value = value:gsub(",", "")
+    end
+    local number = tonumber(value)
+    return IsNonnegative(number) and number or nil
+end
+
+local function ReadRange(value)
+    local low, high = value:match("^([%d,]+) to ([%d,]+)$")
+    if not low then low, high = value:match("^([%d,]+) *%- *([%d,]+)$") end
+    if not low then
+        local single = ReadInteger(value)
+        return single, single
+    end
+    low, high = ReadInteger(low), ReadInteger(high)
+    if low and high and low <= high then return low, high end
+end
+
+local function ReadDuration(value, unit)
+    local duration = SECONDS[unit] and ReadInteger(value)
+    return duration and duration > 0 and duration or nil
+end
+
+local function Components(low, high, periodic, duration, school)
+    local direct = low and low + (high - low) / 2 or 0
+    return { direct = direct, low = low, high = high, periodic = periodic or 0,
+        duration = duration, school = school }
+end
+
+local MISSILES_PREFIX = "launches arcane missiles at the enemy, causing " .. INTEGER .. " arcane damage "
 local TOTAL_GRAMMARS = {
-    corruption = "corrupts the target, causing " .. PERIODIC_AMOUNT .. " shadow damage over ",
-    pain = "a word of darkness that causes " .. PERIODIC_AMOUNT .. " shadow damage over ",
-    rejuvenation = "heals the target for " .. PERIODIC_AMOUNT .. " over ",
-    renew = "heals the target of " .. PERIODIC_AMOUNT .. " damage over ",
-    serpentSting = "stings the target, causing " .. PERIODIC_AMOUNT .. " nature damage over ",
-    mindFlay = "assault the target's mind with shadow energy, causing " .. PERIODIC_AMOUNT .. " shadow damage over ",
+    corruption = "corrupts the target, causing " .. INTEGER .. " shadow damage over ",
+    pain = "a word of darkness that causes " .. INTEGER .. " shadow damage over ",
+    rejuvenation = "heals the target for " .. INTEGER .. " over ",
+    renew = "heals the target of " .. INTEGER .. " damage over ",
+    serpentSting = "stings the target, causing " .. INTEGER .. " nature damage over ",
+    mindFlay = "assault the target's mind with shadow energy, causing " .. INTEGER .. " shadow damage over ",
 }
 local MIXED_GRAMMARS = {
-    regrowth = "heals a friendly target for " .. DIRECT_AMOUNT .. " and another " .. PERIODIC_AMOUNT .. " over ",
-    burn = "burns the enemy for " .. DIRECT_AMOUNT .. " %s damage and then an additional "
-        .. PERIODIC_AMOUNT .. " %s damage over ",
-    holyFire = "consumes the enemy in holy flames that cause " .. DIRECT_AMOUNT .. " holy damage and an additional "
-        .. PERIODIC_AMOUNT .. " holy damage over ",
-    fireball = "hurls a fiery ball that causes " .. DIRECT_AMOUNT .. " fire damage and an additional "
-        .. PERIODIC_AMOUNT .. " fire damage over ",
+    regrowth = "heals a friendly target for " .. AMOUNT .. " and another " .. INTEGER .. " over ",
+    burn = "burns the enemy for " .. AMOUNT .. " %s damage and then an additional "
+        .. INTEGER .. " %s damage over ",
+    holyFire = "consumes the enemy in holy flames that cause " .. AMOUNT .. " holy damage and an additional "
+        .. INTEGER .. " holy damage over ",
+    fireball = "hurls a fiery ball that causes " .. AMOUNT .. " fire damage and an additional "
+        .. INTEGER .. " fire damage over ",
 }
 
-local function ReadTooltipInteger(value)
-    if not value then return nil end
-    if value:match("^%d+$") then return tonumber(value) end
-    local leading, grouped = value:match("^(%d%d?%d?)(,%d.*)$")
-    if leading and grouped:gsub(",%d%d%d", "") == "" then
-        return tonumber((value:gsub(",", "")))
-    end
-    return nil
+local function ReadMissiles(text)
+    local amount, duration, unit = text:match(MISSILES_PREFIX .. "each second for " .. DURATION .. "%.")
+    if amount then return ReadInteger(amount), ReadDuration(duration, unit), 1 end
+    local interval, intervalUnit
+    amount, interval, intervalUnit, duration, unit =
+        text:match(MISSILES_PREFIX .. "every " .. DURATION .. " for " .. DURATION .. "%.")
+    return ReadInteger(amount), ReadDuration(duration, unit), ReadDuration(interval, intervalUnit)
 end
 
-local function ReadTooltipAverage(value)
-    local low, high = value:match("^([%d,]+) to ([%d,]+)$")
-    if not low then low, high = value:match("^([%d,]+)%s*%-%s*([%d,]+)$") end
-    if not low then return ReadTooltipInteger(value) end
-    low, high = ReadTooltipInteger(low), ReadTooltipInteger(high)
-    if IsNonnegative(low) and IsNonnegative(high) and low <= high then
-        return low + (high - low) / 2
-    end
-    return nil
-end
-
--- Tooltip amounts in the aura descriptions are full-effect totals. Missiles
--- are the exception: the tooltip references the triggered spell's per-hit amount.
-function Estimates.GetPeriodicAmounts(model, text)
+local function ReadModeledPeriodic(text, model)
     local effect = model.periodic
     local grammar = effect.grammar
-    local direct, amount, duration, unit
-    text = text:lower():gsub("–", "-"):gsub("—", "-"):gsub("%s+", " ")
+    local amount, duration, low, high
     if grammar == "missiles" then
-        local prefix = "launches arcane missiles at the enemy, causing " .. PERIODIC_AMOUNT .. " arcane damage "
-        amount, duration, unit = text:match(prefix .. "each second for " .. DURATION .. "%.")
-        if not amount then
-            local interval, intervalUnit
-            amount, interval, intervalUnit, duration, unit =
-                text:match(prefix .. "every " .. DURATION .. " for " .. DURATION .. "%.")
-            if not SECONDS[intervalUnit] or tonumber(interval) ~= effect.interval then return nil end
-        end
-    elseif MIXED_GRAMMARS[grammar] then
-        local pattern = MIXED_GRAMMARS[grammar]
+        local interval
+        amount, duration, interval = ReadMissiles(text)
+        if not amount or interval ~= effect.interval then return nil end
+        amount = amount * effect.ticks
+    else
+        local direct, unit
+        local pattern = MIXED_GRAMMARS[grammar] or TOTAL_GRAMMARS[grammar]
+        if not pattern then return nil end
         if grammar == "burn" then
-            -- Insert the school using literal replacements so the captures
-            -- in the Lua pattern keep their meaning.
             pattern = pattern:gsub(" %%s ", " " .. model.school .. " ")
         end
-        direct, amount, duration, unit = text:match(pattern .. DURATION .. "%.")
-        if not direct then return nil end
-    elseif grammar == "mindFlay" then
-        amount, duration, unit = text:match(TOTAL_GRAMMARS[grammar] .. DURATION .. " and slowing their movement speed by %d+%%%.")
-    else
-        amount, duration, unit = text:match(TOTAL_GRAMMARS[grammar] .. DURATION .. "%.")
+        if MIXED_GRAMMARS[grammar] then
+            direct, amount, duration, unit = text:match(pattern .. DURATION .. "%.")
+            if not direct then return nil end
+            low, high = ReadRange(direct)
+            if not low or low + (high - low) / 2 <= 0 then return nil end
+        else
+            local suffix = grammar == "mindFlay" and " and slowing their movement speed by %d+%%%." or "%."
+            amount, duration, unit = text:match(pattern .. DURATION .. suffix)
+        end
+        amount, duration = ReadInteger(amount), ReadDuration(duration, unit)
     end
-    if not SECONDS[unit] or tonumber(duration) ~= effect.duration then return nil end
-    local total = ReadTooltipInteger(amount)
-    if not IsNonnegative(total) or total == 0 then return nil end
-    if grammar == "missiles" then total = total * effect.ticks end
-    local directTotal = 0
-    if direct then
-        directTotal = ReadTooltipAverage(direct)
-        if not IsNonnegative(directTotal) or directTotal == 0 then return nil end
+    if not IsNonnegative(amount) or amount == 0 or duration ~= effect.duration then return nil end
+    return Components(low, high, amount, duration, model.school)
+end
+
+local function ReadHealRange(text)
+    local amount = text:match("heals? a friendly target for " .. AMOUNT .. " health%.")
+        or text:match("heals? a friendly target for " .. AMOUNT .. "%.")
+        or text:match("heal your target for " .. AMOUNT .. " health%.")
+        or text:match("heal your target for " .. AMOUNT .. "%.")
+        or text:match("heals? a single target for " .. AMOUNT .. " health%.")
+        or text:match("heals? a single target for " .. AMOUNT .. "%.")
+    if amount then return ReadRange(amount) end
+end
+
+local function ReadDamageRange(text, school)
+    local suffix = " " .. school .. " damage"
+    local amount = text:match("for " .. AMOUNT .. suffix .. "%.")
+        or text:match("causing " .. AMOUNT .. suffix .. "%.")
+        or text:match("causes " .. AMOUNT .. suffix .. " to the target%.")
+    if amount then return ReadRange(amount) end
+end
+
+local function ReadBloodthirst(text, model)
+    local percent, flat = text:match("damage equal to (%d+)%% of your attack power plus " .. INTEGER .. " and increasing")
+    if not percent then
+        -- A period at the end belongs to the sentence, not the amount.
+        local prefix = "damage equal to (%d+)%% of your attack power plus ([%d,]+)%."
+        percent, flat = text:match(prefix .. "$")
+        if not percent then percent, flat = text:match(prefix .. " ") end
     end
-    if not IsNonnegative(total) then return nil end
-    return directTotal, total
+    if tonumber(percent) ~= model.attackPower * 100 then return nil end
+    flat = ReadInteger(flat)
+    local power = flat and ReadAttackPower()
+    if power then return flat + model.attackPower * power end
+end
+
+local SCHOOL = { physical = true, holy = true, fire = true, nature = true, frost = true, shadow = true, arcane = true }
+local locale = GetLocale and GetLocale() or "enUS"
+
+local function RemoveMatched(text, first, last)
+    return first and (text:sub(1, first - 1) .. " " .. text:sub(last + 1)) or text
+end
+
+local function ReadUnmodeled(text)
+    local amount, interval, duration, unit
+    local first, last, absorbText = text:find("absorbs? " .. INTEGER .. " damage%f[^%a]")
+    if not first then first, last, absorbText = text:find("absorbing " .. INTEGER .. " damage%f[^%a]") end
+    local absorb = ReadInteger(absorbText)
+    text = RemoveMatched(text, first, last)
+
+    local damage, heal
+    amount, duration, interval = ReadMissiles(text)
+    if amount and interval and duration and duration % interval == 0 then
+        local total = amount * (duration / interval)
+        if IsNonnegative(total) then damage = Components(nil, nil, total, duration, "arcane") end
+    end
+
+    -- Handle full-effect heals before damage: Renew describes its healing as
+    -- "heals the target of ... damage over ...".
+    local direct
+    first, last, direct, amount, duration, unit =
+        text:find("heals a friendly target for " .. AMOUNT .. " and another " .. INTEGER .. " over " .. DURATION)
+    if not first then
+        first, last, amount, duration, unit = text:find("heals the target of " .. INTEGER .. " damage over " .. DURATION)
+    end
+    if not first then
+        first, last, amount, duration, unit = text:find("%f[%d,%.]" .. INTEGER .. " health over " .. DURATION)
+    end
+    if not first then
+        first, last, amount, duration, unit = text:find("heals the target for " .. INTEGER .. " over " .. DURATION)
+    end
+    if first then
+        local low, high
+        if direct then low, high = ReadRange(direct) end
+        local total, seconds = ReadInteger(amount), ReadDuration(duration, unit)
+        if low or (total and seconds) then
+            heal = Components(low, high, seconds and total, total and seconds)
+        end
+        text = RemoveMatched(text, first, last)
+    end
+
+    local durationAmount, school
+    first, last, amount, school, durationAmount, unit =
+        text:find("%f[%d,%.]" .. INTEGER .. " (%a[%a ]-)damage over " .. DURATION)
+    if not first then
+        first, last, amount, durationAmount, unit = text:find("%f[%d,%.]" .. INTEGER .. " damage over " .. DURATION)
+    end
+    if first then
+        school = school and school:match("^(%a+) $")
+        local total, seconds = ReadInteger(amount), ReadDuration(durationAmount, unit)
+        if total and seconds then damage = Components(nil, nil, total, seconds, SCHOOL[school] and school) end
+        text = RemoveMatched(text, first, last)
+    end
+
+    -- An explicit per-tick amount without a verified interval and duration
+    -- cannot be treated as a hit or a full effect.
+    local isPeriodic = damage ~= nil or heal ~= nil or first ~= nil
+        or text:find("damage every ", 1, true) or text:find("health every ", 1, true)
+    text = text:gsub("%f[%d,%.]" .. INTEGER .. " [%a ]-damage every ", "")
+        :gsub("%f[%d,%.]" .. INTEGER .. " health every ", "")
+        :gsub(MISSILES_PREFIX .. "each second for " .. DURATION .. "%.", "")
+        :gsub(MISSILES_PREFIX .. "every " .. DURATION .. " for " .. DURATION .. "%.", "")
+
+    local lo, hi = ReadHealRange(text)
+    if not lo then
+        amount = text:match("for " .. AMOUNT .. " health%f[^%a]")
+            or text:match("restores " .. AMOUNT .. " health%f[^%a]")
+            or text:match("%f[%d,%.]" .. AMOUNT .. " health%f[^%a]")
+        if amount then lo, hi = ReadRange(amount) end
+    end
+    if lo then heal = Components(lo, hi, heal and heal.periodic, heal and heal.duration) end
+
+    amount, school = text:match("for " .. AMOUNT .. " (%a+) damage%f[^%a]")
+    if not amount then amount, school = text:match("causing " .. AMOUNT .. " (%a+) damage%f[^%a]") end
+    if not amount then amount, school = text:match("causes? " .. AMOUNT .. " (%a+) damage%f[^%a]") end
+    if not amount then amount, school = text:match("inflicts? " .. AMOUNT .. " (%a+) damage%f[^%a]") end
+    if not amount then amount, school = text:match("deals? " .. AMOUNT .. " (%a+) damage%f[^%a]") end
+    if amount and SCHOOL[school] then
+        lo, hi = ReadRange(amount)
+        if lo then damage = Components(lo, hi, damage and damage.periodic, damage and damage.duration, school) end
+    end
+    return damage, heal, absorb, isPeriodic
+end
+
+-- Parses one public description into direct and periodic components. A
+-- verified model supplies the same amounts to the base and expected lines
+-- when its exact grammar fits; general text never borrows a model schedule.
+local function ReadExpectedDirect(kind, text, model, damage, healing)
+    if kind == "landed" then return ReadBloodthirst(text, model) end
+    local component, low, high
+    if kind == "healing" then
+        component = healing
+        low, high = ReadHealRange(text)
+    elseif kind == "spell" and damage and damage.school == model.school then
+        component = damage
+        low, high = ReadDamageRange(text, model.school)
+    end
+    if component and low and low == component.low and high == component.high then
+        return component.direct
+    end
+end
+
+function Estimates.ParseComponents(text, model, wantsExpected)
+    local result = { status = "unsupported" }
+    if locale ~= "enUS" and locale ~= "enGB" then return result end
+    if IsSecret(text) or type(text) ~= "string" or text == "" then return result end
+    text = text:lower():gsub("–", "-"):gsub("—", "-"):gsub("%s+", " ")
+    local kind = model and model.expected
+    if model and model.periodic then
+        local parts = ReadModeledPeriodic(text, model)
+        if parts then
+            if kind == "healing" then result.healing = parts else result.damage = parts end
+            result.effect, result.expectedAmount, result.status = model.periodic, wantsExpected and parts.direct, "parsed"
+            return result
+        end
+    end
+
+    local damage, heal, absorb, hasPeriodic = ReadUnmodeled(text)
+    result.damage, result.healing, result.absorb = damage, heal, absorb
+    if wantsExpected and kind and not model.periodic and not hasPeriodic then
+        result.expectedAmount = ReadExpectedDirect(kind, text, model, damage, heal)
+    end
+    if damage or heal or absorb or result.expectedAmount then result.status = "parsed" end
+    return result
 end
 
 local LEVEL_MISS = { [-3] = 1, [-2] = 2, [-1] = 3, [0] = 4, [1] = 5, [2] = 6, [3] = 17 }
