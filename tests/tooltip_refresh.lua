@@ -7,6 +7,9 @@ local owner, activeID, activeType = {}, 1001, "spell"
 local primary, processing
 local post, posts, setterHooks, addCount, showCount, sourceReads = nil, 0, 0, 0, 0, 0
 local now, isShown, forbidden = 100, true, false
+local shiftDown, target, combat = false, false, false
+local bookSpellID = 1001
+local build = "70938"
 local descriptions = {
     [1001] = "Blasts the enemy for 100 Fire damage.",
     [1002] = "Heals a friendly target for 200 health.",
@@ -18,7 +21,20 @@ function issecretvalue(value) return rawequal(value, secret) end
 function print(message) errors[#errors + 1] = message end
 function GetTime() return now end
 function GetLocale() return "enUS" end
-function GetBuildInfo() return "1.60.1", "70938", "Nov 2026", 16001 end
+function GetBuildInfo() return "1.60.1", build, "Nov 2026", 16001 end
+function IsShiftKeyDown() return shiftDown end
+function InCombatLockdown() return combat end
+function UnitPowerMax() return 1000 end
+function UnitExists() return target end
+function UnitCanAttack() return target end
+function UnitIsPlayer() return false end
+function UnitPlayerControlled() return false end
+function UnitIsDeadOrGhost() return false end
+function UnitEffectiveLevel(unit) return unit == "player" and 60 or 63 end
+function GetSpellCritChance() return 0 end
+function GetCombatRatingBonus() return 0 end
+function GetSpellHitModifier() return 0 end
+CR_HIT_SPELL = 8
 function GetActionInfo(slot)
     assert(slot == 1)
     sourceReads = sourceReads + 1
@@ -46,13 +62,15 @@ C_Spell = {
     GetSpellInfo = function() return { castTime = 2000 } end,
     GetSpellDescription = function(id) return descriptions[id] end,
     RequestLoadSpellData = function() end,
+    GetSpellPowerCost = function() return { { type = 0, cost = 100 } } end,
 }
 C_SpellBook = {
     GetSpellBookItemInfo = function(slot, bank)
         assert(slot == 1)
         sourceReads = sourceReads + 1
-        return { spellID = bank == 1 and 1002 or 1001 }
+        return { spellID = bank == 1 and 1002 or bookSpellID }
     end,
+    IsSpellKnown = function(_, bank) return bank == 0 end,
 }
 function CreateFrame()
     return {
@@ -88,11 +106,15 @@ local function expect(value, label)
     assert(value, label .. "\nTooltip: " .. table.concat(lines, " | "))
     checks = checks + 1
 end
-local function has(text)
+local function count(text)
+    local matches = 0
     for _, line in ipairs(lines) do
-        if line:find(text, 1, true) then return true end
+        if line:find(text, 1, true) then matches = matches + 1 end
     end
-    return false
+    return matches
+end
+local function has(text)
+    return count(text) > 0
 end
 local function clear()
     lines = {}
@@ -109,6 +131,30 @@ local function native(getter, args, data)
     post(GameTooltip, data)
     GameTooltip:Show() -- client, not the addon
 end
+local bookRebuilds = 0
+local bookData = { type = 1, dataInstanceID = 30 }
+SpellBookItemMixin = {
+    ShowSpellBookTooltip = function(self)
+        assert(not combat, "addon forced a spellbook refresh in combat")
+        assert(owner == self.Button, "addon replaced tooltip owner")
+        bookRebuilds = bookRebuilds + 1
+        native("GetSpellBookItem", { self.slotIndex, self.spellBank }, bookData)
+        -- Blizzard adds these after SetSpellBookItem in the stock spellbook.
+        GameTooltip:AddLine("Native spellbook action-bar status")
+        GameTooltip:AddLine("Native assisted-combat text")
+        GameTooltip:Show()
+    end,
+}
+local stockBookItem = { Button = {}, slotIndex = 1, spellBank = 0,
+    ShowSpellBookTooltip = SpellBookItemMixin.ShowSpellBookTooltip }
+function stockBookItem.Button:GetParent() return stockBookItem end
+function GameTooltip:RefreshDataNextUpdate()
+    error("addon changed the native tooltip update schedule")
+end
+ActionBarActionButtonMixin = {
+    SetTooltip = function() native("GetAction", { 1 }, bookData) end,
+}
+local stockAction = { action = 1, UpdateTooltip = ActionBarActionButtonMixin.SetTooltip }
 local ns = {}
 for _, module in ipairs({ "SpellPowerModels", "SpellModifiers", "SpellEstimates", "DamageTips" }) do
     assert(loadfile(path .. "/" .. module .. ".lua"))("DamageTips", ns)
@@ -194,4 +240,128 @@ nextFrame()
 expect(#lines == 0, "hide invalidates deferred context even if visibility changes again")
 expect(#errors == 2 and errors[1]:find("settings imported", 1, true) and errors[2]:find("settings imported", 1, true),
     "no forbidden data, mutation, or guarded hook errors")
+
+DamageTipsDB.showSpellbook = true
+DamageTipsDB.shiftDetails = true
+DamageTipsDB.showExpectedThroughput = true
+DamageTipsDB.showMana = true
+bookSpellID, owner = 2136, stockBookItem.Button
+descriptions[2136] = "Blasts the enemy for 90 to 110 Fire damage."
+stockBookItem:ShowSpellBookTooltip()
+expect(count("DPS: 50.0") == 1 and count("Expected DPS (equal-level PvE): 48.0") == 1
+    and count("Hold Shift") == 1, "open book starts with equal-level estimate and Shift hint")
+local rebuilds = bookRebuilds
+local adds = addCount
+fire("MODIFIER_STATE_CHANGED", "LCTRL", 1)
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds, "unrelated modifiers do not refresh the tooltip")
+
+target, shiftDown = true, true
+fire("MODIFIER_STATE_CHANGED", "LSHIFT", 1)
+fire("MODIFIER_STATE_CHANGED", "RSHIFT", 1)
+fire("PLAYER_TARGET_CHANGED")
+expect(bookRebuilds == rebuilds and addCount == adds, "event burst leaves rendering to the next frame")
+nextFrame()
+expect(bookRebuilds == rebuilds + 1 and count("Expected DPS (target L63, level only): 41.5") == 1
+    and count("Direct damage:") == 1 and count("Hold Shift") == 0 and count("Mana cost") == 1,
+    "Shift and target-change events rebuild the still-hovered book entry exactly once")
+expect(count("Native spellbook action-bar status") == 1 and count("Native assisted-combat text") == 1,
+    "stock spellbook rebuild preserves native lines appended after the post-call")
+
+shiftDown = false
+fire("MODIFIER_STATE_CHANGED", "RSHIFT", 0)
+nextFrame()
+expect(count("Hold Shift") == 1 and count("Direct damage:") == 0,
+    "releasing Shift removes the breakdown from the open spellbook tooltip")
+
+rebuilds, adds = bookRebuilds, addCount
+fire("SPELL_TEXT_UPDATE", 1001)
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds, "unrelated spell text cannot refresh the open tooltip")
+descriptions[2136] = "Blasts the enemy for 200 Fire damage."
+fire("SPELL_TEXT_UPDATE", 2136)
+nextFrame()
+expect(bookRebuilds == rebuilds + 1 and count("DPS: 100.0") == 1 and count("DPS: 50.0") == 0,
+    "matching spell text replaces the old rendered estimate")
+
+bookSpellID = 1012
+stockBookItem:ShowSpellBookTooltip()
+expect(count("Mana cost") == 1 and count("DPS:") == 0, "a spell with pending description can render a mana line")
+rebuilds = bookRebuilds
+descriptions[1012] = "Blasts the enemy for 200 Fire damage."
+fire("SPELL_DATA_LOAD_RESULT", 1012, true)
+fire("SPELL_TEXT_UPDATE", 1012)
+nextFrame()
+expect(bookRebuilds == rebuilds + 1 and count("DPS: 100.0") == 1 and count("Mana cost") == 1,
+    "coalesced data completion replaces a partially decorated tooltip without duplicating mana")
+
+rebuilds, adds = bookRebuilds, addCount
+descriptions[1012] = "Blasts the enemy for 300 Fire damage."
+fire("SPELL_TEXT_UPDATE", 1012)
+bookSpellID = 2136
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds, "changed slot contents invalidate a queued refresh")
+bookSpellID = 1012
+fire("SPELL_TEXT_UPDATE", 1012)
+owner = {}
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds, "changed owner invalidates an otherwise matching queued refresh")
+owner = stockBookItem.Button
+fire("SPELL_TEXT_UPDATE", 1012)
+scripts.OnHide(GameTooltip)
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds, "a hidden generation cannot force a stock-owner refresh")
+
+bookSpellID = 2136
+stockBookItem:ShowSpellBookTooltip()
+rebuilds, adds = bookRebuilds, addCount
+target = false
+fire("PLAYER_TARGET_CHANGED")
+combat = true -- lockdown begins between scheduling and the timer callback
+nextFrame()
+shiftDown = true
+fire("MODIFIER_STATE_CHANGED", "LSHIFT", 1)
+fire("SPELL_TEXT_UPDATE", 2136)
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds, "lockdown prevents both queued and new forced rebuilds")
+combat = false
+fire("PLAYER_REGEN_ENABLED")
+nextFrame()
+expect(bookRebuilds == rebuilds + 1 and count("Expected DPS (equal-level PvE): 96.0") == 1
+    and count("Direct damage:") == 1 and count("Mana cost") == 1,
+    "ending lockdown refreshes the same visible tooltip once with current data")
+
+rebuilds, adds = bookRebuilds, addCount
+fire("SPELL_TEXT_UPDATE", 2136)
+stockBookItem.slotIndex = 2
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds, "a recycled stock spellbook item cannot be replayed")
+stockBookItem.slotIndex = 1
+local stockShow = stockBookItem.ShowSpellBookTooltip
+stockBookItem.ShowSpellBookTooltip = function() error("addon invoked non-stock callback") end
+fire("PLAYER_TARGET_CHANGED")
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds and #errors == 2,
+    "addon never invokes a replaced owner callback")
+stockBookItem.ShowSpellBookTooltip = stockShow
+build = "70939"
+fire("SPELL_TEXT_UPDATE", 2136)
+nextFrame()
+expect(bookRebuilds == rebuilds and addCount == adds, "a newer build does not use the 70938-only native replay")
+build = "70938"
+
+owner, activeID = stockAction, 2136
+native("GetAction", { 1 }, data)
+adds = addCount
+target = true
+combat = true
+fire("PLAYER_TARGET_CHANGED")
+fire("SPELL_TEXT_UPDATE", 2136)
+nextFrame()
+expect(addCount == adds, "addon does not force an action tooltip refresh during lockdown")
+stockAction:UpdateTooltip() -- Blizzard's periodic action-tooltip update
+expect(count("Expected DPS (target L63, level only): 83.0") == 1 and count("Mana cost") == 1,
+    "Blizzard's native action refresh works in lockdown with one current estimate and mana line")
+expect(#errors == 2, "refreshing stock tooltips produced no guarded Lua errors")
+
 output("DamageTips tooltip refresh regressions passed (" .. checks .. " assertions).")

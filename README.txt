@@ -149,6 +149,8 @@ Notes
   on landed hits in either mode. Healing estimates are target-independent.
 * Supported periodic families are Corruption, Shadow Word: Pain,
   Rejuvenation, Renew, Regrowth, Moonfire, Immolate, Holy Fire and Fireball.
+  Build 70938 also supports all three Riptide ranks. Its estimated healing
+  covers five ticks over 15 seconds and excludes the separate Chain Heal bonus.
   Arcane Missiles and Mind Flay use their full base channels. Serpent Sting
   shows ranged power scaling. Each estimate needs the recognized English
   description and the build's tick schedule. The scaling lines are nominal
@@ -182,10 +184,16 @@ Notes
   DamageTipsPatterns global is no longer used.
 * The basic DPS line requires a damage amount or range in the spell text.
 * Missing spell data is requested with bounded retries. A matching tooltip
-  with no DamageTips lines can update when the text arrives. If it already
-  has lines, the next native refresh adds the newly available information.
+  with no DamageTips lines can update when the text arrives. On build 70938,
+  an open stock spellbook tooltip also refreshes when Shift, the target, or
+  its spell data changes. DamageTips waits until combat ends to request that
+  refresh. Stock action bars use WoW's own tooltip update.
 * Next-rank comparisons use readable ranked spells from the player spellbook.
   The current spell must match an indexed rank before a comparison is shown.
+  For healing spells, the comparison shows healing per cast and, when both
+  ranks have readable fixed mana costs, healing per mana. Wild Growth's
+  comparison is per recipient. The periodic effects setting applies to both
+  ranks.
 
 More documents: CHANGELOG.txt, DESCRIPTION.txt, AUDIT.txt, CREDITS.txt
 World of Warcraft is a trademark of Blizzard Entertainment. This addon is not

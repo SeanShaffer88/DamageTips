@@ -213,9 +213,14 @@ local TOTAL_GRAMMARS = {
     pain = "a word of darkness that causes " .. INTEGER .. " shadow damage over ",
     rejuvenation = "heals the target for " .. INTEGER .. " over ",
     wildGrowth = "^heals the target and their party for " .. INTEGER .. " over ",
+    riptide = "^heals a friendly target for " .. INTEGER .. " over ",
     renew = "heals the target of " .. INTEGER .. " damage over ",
     serpentSting = "stings the target, causing " .. INTEGER .. " nature damage over ",
     mindFlay = "assault the target's mind with shadow energy, causing " .. INTEGER .. " shadow damage over ",
+}
+local TOTAL_SUFFIXES = {
+    mindFlay = " and slowing their movement speed by %d+%%%.",
+    riptide = ", and increases the effectiveness of your chain heal casts directly on that target by %d+%%%.%s*$",
 }
 local MIXED_GRAMMARS = {
     regrowth = "heals a friendly target for " .. AMOUNT .. " and another " .. INTEGER .. " over ",
@@ -258,7 +263,7 @@ local function ReadModeledPeriodic(text, model)
             low, high = ReadRange(direct)
             if not low or low + (high - low) / 2 <= 0 then return nil end
         else
-            local suffix = grammar == "mindFlay" and " and slowing their movement speed by %d+%%%." or "%."
+            local suffix = TOTAL_SUFFIXES[grammar] or "%."
             amount, duration, unit = text:match(pattern .. DURATION .. suffix)
         end
         amount, duration = ReadInteger(amount), ReadDuration(duration, unit)

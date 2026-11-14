@@ -52,7 +52,7 @@ local DEFAULTS = {
     showRange     = false,  -- "Damage: 59-65 (avg 62)"
     showDPC       = false,  -- "Damage per cast: x"
     schoolTint    = false,  -- tint the damage lines by spell school
-    showNextRank  = false,  -- "Next rank: DPS x (+y%)"
+    showNextRank  = false,  -- next-rank damage or healing comparison
     shiftDetails  = true,   -- hold Shift while hovering for the full breakdown
     showMinimap   = true,   -- minimap button (addon compartment always available)
     showMana      = true,   -- mana cost line
@@ -401,6 +401,15 @@ local function NextRankLineText(dps, nextDPS)
         (nextDPS - dps) / dps * 100)
 end
 
+local function NextRankHealingLineText(metric, current, nextValue, precision, perRecipient)
+    if not FiniteNumber(current) or current <= 0 or not FiniteNumber(nextValue) or nextValue <= 0 then return end
+    local delta = (nextValue - current) / current * 100
+    if not FiniteNumber(delta) then return end
+    local scope = perRecipient and " (per recipient)" or ""
+    return string_format("Next rank: healing per %s%s %s (%+.0f%%)", metric, scope,
+        FormatNumber(string_format(precision, nextValue)), delta)
+end
+
 
 -- Breakdown lines supplement output that is already visible in the tooltip.
 local function BuildDetailLines(t, damage, healing, absorb)
@@ -614,6 +623,7 @@ local AddSpellInfo, ResolveTooltipSpell -- defined in the hook section
 local function ClearTooltipContext()
     cur.generation = cur.generation + 1
     cur.spellID, cur.owner, cur.kind, cur.slot, cur.arg, cur.source = nil, nil, nil, nil, nil, nil
+    cur.nativeInfo, cur.queuedRefresh, cur.deferredRefresh = nil, nil, nil
     cur.added, cur.processed = false, false
 end
 
@@ -631,27 +641,91 @@ local requests = {} -- per-spell attempt budget and retry deadline
 local pending = {}  -- exact attempt awaiting SPELL_DATA_LOAD_RESULT
 local waiting = 0
 local dataFrame = CreateFrame("Frame")
-local queuedGeneration
 
-local function RefreshTooltip(generation, spellID)
-    if queuedGeneration == generation then queuedGeneration = nil end
-    if generation ~= cur.generation or not DB or cur.added or not GameTooltip:IsShown()
-        or (GameTooltip.IsForbidden and GameTooltip:IsForbidden()) then return end
-    local owner = GameTooltip:GetOwner()
-    if IsSecret(owner) or owner ~= cur.owner then return end
-    local currentID, source = ResolveTooltipSpell(cur.kind, cur.slot, cur.arg)
-    if currentID == spellID and source == cur.source then
-        AddSpellInfo(GameTooltip, spellID, source)
+local function IsNativeRefreshBuild()
+    if not GetBuildInfo then return false end
+    local ok, version, build, _, interface = pcall(GetBuildInfo)
+    return ok and not IsSecret(version) and not IsSecret(build) and not IsSecret(interface)
+        and version == "1.60.1" and (build == "70938" or build == 70938) and interface == 16001
+end
+
+local function GetStockBookItem(owner)
+    local mixin = _G.SpellBookItemMixin
+    if not mixin or not owner.GetParent or (owner.IsForbidden and owner:IsForbidden()) then return end
+    local item = owner:GetParent()
+    if IsSecret(item) or not item or (item.IsForbidden and item:IsForbidden()) then return end
+    local button, show, slot, bank = item.Button, item.ShowSpellBookTooltip, item.slotIndex, item.spellBank
+    if not IsSecret(button) and button == owner and not IsSecret(show) and type(show) == "function"
+        and show == mixin.ShowSpellBookTooltip and not IsSecret(slot) and slot == cur.slot
+        and not IsSecret(bank) and bank == cur.arg then
+        return item, show
     end
 end
 
-local function QueueTooltipRefresh(spellID)
-    local generation = cur.generation
-    if cur.spellID ~= spellID or cur.added or queuedGeneration == generation
+local function HasStockActionUpdater(owner)
+    local mixin = _G.ActionBarActionButtonMixin
+    if not mixin or (owner.IsForbidden and owner:IsForbidden()) then return false end
+    local update, action = owner.UpdateTooltip, owner.action
+    return not IsSecret(update) and type(update) == "function" and update == mixin.SetTooltip
+        and not IsSecret(action) and action == cur.slot
+end
+
+local function RefreshTooltip(refresh)
+    if refresh ~= cur.queuedRefresh then return end
+    cur.queuedRefresh = nil
+    if refresh.generation ~= cur.generation or not DB
+        or (GameTooltip.IsForbidden and GameTooltip:IsForbidden()) then return end
+    local shown = GameTooltip:IsShown()
+    if IsSecret(shown) or not shown then return end
+    local owner = GameTooltip:GetOwner()
+    if IsSecret(owner) or owner ~= cur.owner then return end
+    local currentID, source = ResolveTooltipSpell(cur.kind, cur.slot, cur.arg)
+    if currentID ~= refresh.spellID or source ~= cur.source then return end
+
+    if cur.nativeInfo then
+        local info = GameTooltip:GetPrimaryTooltipInfo()
+        if IsSecret(info) or info ~= cur.nativeInfo then return end
+        if IsNativeRefreshBuild() then
+            -- Blizzard's existing action-button updater already refreshes its tooltip.
+            if cur.kind == ACTION and HasStockActionUpdater(owner) then return end
+            if cur.kind == BOOK then
+                local item, show = GetStockBookItem(owner)
+                if item then
+                    if not InCombatLockdown then return end
+                    local locked = InCombatLockdown()
+                    if IsSecret(locked) then return end
+                    if locked then
+                        cur.deferredRefresh = refresh
+                        return
+                    end
+                    cur.deferredRefresh = nil
+                    -- Preserve the spellbook's extra lines and gamepad anchoring.
+                    show(item)
+                    return
+                end
+            end
+        end
+    end
+
+    -- No safe replay is available. Keep the existing load-result fallback for
+    -- empty tooltips, but never append a second set of addon lines.
+    if refresh.spellData and not cur.added then
+        AddSpellInfo(GameTooltip, refresh.spellID, source)
+    end
+end
+
+local function QueueTooltipRefresh(spellID, spellData)
+    if not spellID or cur.spellID ~= spellID or (not spellData and (cur.kind ~= BOOK or not cur.nativeInfo))
         or not (C_Timer and C_Timer.After) then return end
-    queuedGeneration = generation
-    -- The event may fire inside the setter post-hook or the load call.
-    C_Timer.After(0, function() RunTooltipHandler(RefreshTooltip, generation, spellID) end)
+    local queued = cur.queuedRefresh
+    if queued then
+        queued.spellData = queued.spellData or spellData
+        return
+    end
+    local refresh = { generation = cur.generation, spellID = spellID, spellData = spellData }
+    cur.queuedRefresh = refresh
+    -- Spell events can fire synchronously from inside the tooltip's setter.
+    C_Timer.After(0, function() RunTooltipHandler(RefreshTooltip, refresh) end)
 end
 
 local function InvalidateSpellText(spellID)
@@ -673,7 +747,7 @@ local function FinishSpellRequest(spellID, attempt, success)
     attempt.retryAt = GetTime() + 2 ^ (attempt.count - 1)
     if success then
         InvalidateSpellText(spellID)
-        QueueTooltipRefresh(spellID)
+        QueueTooltipRefresh(spellID, true)
     end
 end
 
@@ -697,14 +771,30 @@ end
 
 dataFrame:RegisterEvent("SPELLS_CHANGED")
 dataFrame:RegisterEvent("SPELL_TEXT_UPDATE")
+dataFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
+dataFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+dataFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 dataFrame:SetScript("OnEvent", function(_, event, spellID, success)
     if event == "SPELLS_CHANGED" then
         rankIndexDirty = true
         if DB then InvalidateCache() end
+        QueueTooltipRefresh(cur.spellID)
     elseif event == "SPELL_TEXT_UPDATE" then
         InvalidateSpellText(spellID)
-        if IsWholeNumber(spellID, 1) then QueueTooltipRefresh(spellID) end
-    elseif IsWholeNumber(spellID, 1) then
+        if IsWholeNumber(spellID, 1) then QueueTooltipRefresh(spellID, true) end
+    elseif event == "MODIFIER_STATE_CHANGED" then
+        if DB and DB.shiftDetails and not IsSecret(spellID) and (spellID == "LSHIFT" or spellID == "RSHIFT") then
+            QueueTooltipRefresh(cur.spellID)
+        end
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        if DB and DB.showExpectedThroughput then QueueTooltipRefresh(cur.spellID) end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        local deferred = cur.deferredRefresh
+        if deferred and deferred.generation == cur.generation then
+            cur.deferredRefresh = nil
+            QueueTooltipRefresh(deferred.spellID, deferred.spellData)
+        end
+    elseif event == "SPELL_DATA_LOAD_RESULT" and IsWholeNumber(spellID, 1) then
         local attempt = pending[spellID]
         if attempt then FinishSpellRequest(spellID, attempt, not IsSecret(success) and success == true) end
     end
@@ -713,9 +803,9 @@ end)
 ----------------------------------------------------------------------
 -- Entry computation
 ----------------------------------------------------------------------
--- Computes every number for a spell. `light` skips healing and next-rank
--- (used when computing the next rank itself, to avoid chaining).
-local function Compute(spellID, light, estimate, powerModel, source)
+-- A comparison probe never chains ranks or calculates healing throughput.
+-- Include healing totals only if the current tooltip needs that comparison.
+local function Compute(spellID, light, estimate, powerModel, source, readNextHealing)
     local text, secret, loaded = GetSpellText(spellID, source == PET_BOOK)
     local t = {}
     if not loaded or secret then RemoveParseEntry(spellID, source) end
@@ -737,10 +827,6 @@ local function Compute(spellID, light, estimate, powerModel, source)
         and DB.showExpectedThroughput and type(rule) ~= "number" or false
     t.powerModel = estimate and powerModel
     t.baselineDamage = DB.showDPS or DB.showDPM or DB.showDPC or DB.showRange or DB.showDPMana
-    if DB.showMana or DB.showDPMana or wantsSustain then
-        t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, wantsSustain)
-    end
-
     local parsed
     if loaded and not secret then
         parsed = ParsePublicText(spellID, source, text, powerModel, wantsExpected)
@@ -748,7 +834,9 @@ local function Compute(spellID, light, estimate, powerModel, source)
         parsed = {}
     end
     local damage, healing = parsed.damage, parsed.healing
-    t.healingPerRecipient = healing and parsed.effect and parsed.effect.perRecipient
+    t.healingPerRecipient = healing ~= nil and parsed.effect ~= nil and parsed.effect.perRecipient == true
+    local needsRecipientScope = powerModel and powerModel.periodic and powerModel.periodic.perRecipient
+    local readableHealingScope = not needsRecipientScope or t.healingPerRecipient
     if type(rule) == "number" then
         t.total, t.lo, t.hi = rule, rule, rule
     elseif damage and (t.baselineDamage or estimate) then
@@ -756,7 +844,7 @@ local function Compute(spellID, light, estimate, powerModel, source)
         t.total, t.lo, t.hi = damage.direct + t.dot, damage.low, damage.high
         t.school = damage.school
     end
-    if not light and (DB.showHealing or estimate) then
+    if readNextHealing or (not light and (DB.showHealing or estimate)) then
         t.absorb = parsed.absorb
         if healing then
             t.hot, t.hotDur = DB.includeDoT and healing.periodic or 0, DB.includeDoT and healing.duration or nil
@@ -764,8 +852,19 @@ local function Compute(spellID, light, estimate, powerModel, source)
         end
     end
 
+    local compareHealing = not light and DB.showNextRank and DB.showHealing
+        and (source == ACTION or source == BOOK)
+    if (compareHealing or readNextHealing) and readableHealingScope and FiniteNumber(t.htotal) and t.htotal > 0 then
+        t.comparableHealing = t.htotal
+    end
+    compareHealing = compareHealing and t.comparableHealing ~= nil
+    local checkFixedMana = wantsSustain or t.comparableHealing ~= nil
+    if DB.showMana or DB.showDPMana or checkFixedMana then
+        t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, checkFixedMana)
+    end
+
     local damageTiming = t.total and t.total > 0 and (t.baselineDamage or wantsSustain)
-    local healingTiming = t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
+    local healingTiming = not light and t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
     local effect = t.powerModel and DB.includeDoT and parsed.effect or nil
     if effect then
         t.tickTotal = (damage or healing).periodic
@@ -796,11 +895,23 @@ local function Compute(spellID, light, estimate, powerModel, source)
         end
     end
 
-    if not light and t.baselineDamage and DB.showNextRank and t.dps and t.dps > 0 then
+    local compareDamage = not light and DB.showNextRank and t.baselineDamage and t.dps and t.dps > 0
+    if compareDamage or compareHealing then
         local nextID = NextRankSpellID(spellID)
         if nextID then
-            local nt = Compute(nextID, true, false, nil, BOOK)
-            if nt and nt.dps then t.nextDPS = nt.dps end
+            local nextModel = compareHealing and Estimates.GetSpellModel(nextID)
+            local nextHealingModel = nextModel and nextModel.expected == "healing" and nextModel or nil
+            local nt = Compute(nextID, true, false, nextHealingModel, BOOK, compareHealing)
+            if compareDamage then
+                -- A modeled healing grammar can replace the generic parse.
+                -- Keep the old damage comparison when both are requested.
+                local damageRank = nextHealingModel and nextHealingModel.periodic
+                    and Compute(nextID, true, false, nil, BOOK) or nt
+                t.nextDPS = damageRank.dps
+            end
+            if compareHealing and nt.comparableHealing and t.healingPerRecipient == nt.healingPerRecipient then
+                t.nextHealing, t.nextHealingManaCost = nt.comparableHealing, nt.fixedManaCost
+            end
         end
     end
 
@@ -823,10 +934,17 @@ local function GetEntry(spellID, estimate, powerModel, source)
     if DB.showHealing and t.htotal and t.htotal > 0 then
         e.healLine = HealLineText(t.hps, t.healingPerRecipient)
         e.heffLine = HealEffLineText(t.htotal, t.cost, t.healingPerRecipient)
+        if t.nextHealing then
+            e.nextHealLine = NextRankHealingLineText("cast", t.htotal, t.nextHealing, "%.0f", t.healingPerRecipient)
+            if t.fixedManaCost and t.nextHealingManaCost then
+                e.nextHealManaLine = NextRankHealingLineText("mana", t.htotal / t.fixedManaCost,
+                    t.nextHealing / t.nextHealingManaCost, "%.2f", t.healingPerRecipient)
+            end
+        end
     end
     e.absorbLine = AbsorbLineText(t.absorb)
     e.detailLines = BuildDetailLines(t, e.dmgLine or e.dpcLine or e.rangeLine or e.effLine or e.nextLine,
-        e.healLine or e.heffLine, e.absorbLine)
+        e.healLine or e.heffLine or e.nextHealLine, e.absorbLine)
 
     if DB.showMana and t.cost and t.cost > 0 then
         local maxMana
@@ -975,6 +1093,8 @@ AddSpellInfo = function(tooltip, spellID, source, nativeShow)
     if e.nextLine then AddStyledLine(tooltip, e.nextLine, dmgColor) added = true end
     if e.healLine then AddStyledLine(tooltip, e.healLine, DB.healColor) added = true end
     if e.heffLine then AddStyledLine(tooltip, e.heffLine, DB.healColor) added = true end
+    if e.nextHealLine then AddStyledLine(tooltip, e.nextHealLine, DB.healColor) added = true end
+    if e.nextHealManaLine then AddStyledLine(tooltip, e.nextHealManaLine, DB.healColor) added = true end
     if e.absorbLine then AddStyledLine(tooltip, e.absorbLine, DB.healColor) added = true end
     if e.manaLine then AddStyledLine(tooltip, e.manaLine, DB.manaColor) added = true end
     if estimateData and AddEstimateLines(tooltip, estimateData, dmgColor) then added = true end
@@ -1047,14 +1167,15 @@ local function IsMainTooltip(tooltip)
         and not (tooltip.IsForbidden and tooltip:IsForbidden())
 end
 
-local function RenderTooltip(tooltip, kind, slot, arg, nativeShow)
+local function RenderTooltip(tooltip, kind, slot, arg, nativeInfo)
     local spellID, source = ResolveTooltipSpell(kind, slot, arg)
     if not spellID then return end
     local owner = tooltip:GetOwner()
     if not IsSecret(owner) and owner ~= nil then
         cur.spellID, cur.owner, cur.kind, cur.slot, cur.arg, cur.source = spellID, owner, kind, slot, arg, source
+        cur.nativeInfo = nativeInfo
     end
-    AddSpellInfo(tooltip, spellID, source, nativeShow)
+    AddSpellInfo(tooltip, spellID, source, nativeInfo ~= nil)
 end
 
 local function OnTooltipHook(tooltip, kind, slot, arg)
@@ -1078,7 +1199,7 @@ local function OnTooltipPostCall(tooltip, data)
     -- A native reprocess calls ClearLines before this post-call, even when the
     -- new data uses the same instance ID. For this pass append at most once.
     cur.processed = true
-    RenderTooltip(tooltip, getter == "GetAction" and ACTION or BOOK, args[1], args[2], true)
+    RenderTooltip(tooltip, getter == "GetAction" and ACTION or BOOK, args[1], args[2], info)
 end
 
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and TooltipDataProcessor.AllTypes
