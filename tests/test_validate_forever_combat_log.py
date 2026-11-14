@@ -20,13 +20,13 @@ def line(seconds, payload):
     return f"{prefix}-5  {payload}\n"
 
 
-def spell_event(event, spell, recipient):
-    return f'{event},{CASTER},"Caster, the Tester",0x511,0x0,{recipient},"R",0x512,0x0,{spell},"A spell",0x8'
+def spell_event(event, spell, recipient, caster=CASTER):
+    return f'{event},{caster},"Caster, the Tester",0x511,0x0,{recipient},"R",0x512,0x0,{spell},"A spell",0x8'
 
 
-def heal(spell, recipient, raw, absorbs=0, critical=False):
+def heal(spell, recipient, raw, absorbs=0, critical=False, *, event="SPELL_PERIODIC_HEAL", caster=CASTER):
     effective = 0 if critical else min(10, raw)
-    tick = spell_event("SPELL_PERIODIC_HEAL", spell, recipient)
+    tick = spell_event(event, spell, recipient, caster)
     return tick + ",0" * 19 + f",{effective},{raw},{raw - effective},{absorbs},{'1' if critical else 'nil'}"
 
 
@@ -72,21 +72,71 @@ class ValidatorTest(unittest.TestCase):
                 low = cast(1, spell, low_values, 1)
                 low += cast(11, spell, low_values, 1, crit=2, remove_before_last_tick=True)
                 low += cast(21, spell, [300] * 3, 1, recipient=OTHER)
+                low += line(24, heal(spell, RECIPIENT, 50, event="SPELL_HEAL"))
                 report = self.run_case(spell, low, cast(1, spell, high_values, 1))
                 self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
                 self.assertIn("91", report.stdout)
                 self.assertEqual(report.stdout.count("PASS"), 3)
+                self.assertNotIn("Initial heal", report.stdout)
 
-    def test_riptide_checks_periodic_heal_only(self):
+    def test_riptide_all_ranks_expect_no_initial_heal(self):
         for spell in (408521, 1239242, 1239243):
             with self.subTest(spell=spell):
-                low = line(1, spell_event("SPELL_HEAL", spell, RECIPIENT))
+                low = line(1, heal(spell, RECIPIENT, 0, event="SPELL_HEAL"))
                 low += cast(1, spell, [120] * 5, 3)
                 high = cast(1, spell, [140] * 5, 3)
                 high += cast(20, spell, [140] * 5, 3, crit=4)
                 report = self.run_case(spell, low, high)
                 self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
                 self.assertIn("100", report.stdout)
+                self.assertIn("PASS Initial heal absence", report.stdout)
+                self.assertIn("N/A Initial healing-power gain", report.stdout)
+                self.assertIn("N/A Initial crit multiplier", report.stdout)
+
+    def test_riptide_positive_initial_heal_fails_while_periodic_checks_pass(self):
+        spell = 408521
+        low = cast(1, spell, [120] * 5, 3)
+        high = cast(1, spell, [140] * 5, 3)
+        high += cast(20, spell, [140] * 5, 3, crit=4)
+        direct = line(1, heal(spell, RECIPIENT, 50, absorbs=5, critical=True, event="SPELL_HEAL"))
+        for captures in ((direct + low, high), (low, direct + high)):
+            with self.subTest(initial_in_low_capture=captures[0].startswith(direct)):
+                report = self.run_case(spell, *captures)
+                self.assertEqual(report.returncode, 2, report.stdout + report.stderr)
+                for check in ("Tick count and timing", "Healing-power gain", "Periodic crit multiplier"):
+                    self.assertIn(f"PASS {check}", report.stdout)
+                self.assertIn("FAIL Initial heal absence", report.stdout)
+
+    def test_riptide_ignores_direct_heals_with_other_rank_caster_or_recipient(self):
+        spell = 408521
+        low = line(1, heal(1239242, RECIPIENT, 50, event="SPELL_HEAL"))
+        low += line(1, heal(spell, RECIPIENT, 50, event="SPELL_HEAL", caster=OTHER))
+        low += line(1, heal(spell, OTHER, 50, event="SPELL_HEAL"))
+        low += cast(1, spell, [120] * 5, 3)
+        high = cast(1, spell, [140] * 5, 3)
+        high += cast(20, spell, [140] * 5, 3, crit=4)
+        report = self.run_case(spell, low, high)
+        self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
+        self.assertIn("PASS Initial heal absence", report.stdout)
+
+    def test_riptide_absence_needs_complete_auras_but_one_direct_event_still_fails(self):
+        spell = 408521
+        low = cast(1, spell, [120] * 5, 3, removed=False)
+        report = self.run_case(spell, low, "")
+        self.assertEqual(report.returncode, 3, report.stdout + report.stderr)
+        self.assertIn("INCONCLUSIVE Initial heal absence", report.stdout)
+        self.assertIn("N/A Initial crit multiplier", report.stdout)
+        direct = line(1, heal(spell, RECIPIENT, 50, event="SPELL_HEAL"))
+        report = self.run_case(spell, low, direct)
+        self.assertEqual(report.returncode, 2, report.stdout + report.stderr)
+        self.assertIn("FAIL Initial heal absence", report.stdout)
+
+    def test_riptide_rejects_unsupported_initial_heal_layout(self):
+        spell = 408521
+        malformed = line(1, spell_event("SPELL_HEAL", spell, RECIPIENT) + ",50,0,0,nil")
+        report = self.run_case(spell, "", malformed)
+        self.assertEqual(report.returncode, 2)
+        self.assertIn("unsupported advanced SPELL_HEAL layout", report.stderr)
 
     def test_tick_count_cadence_gain_and_crit_mismatch_fail(self):
         spell = 408521

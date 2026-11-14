@@ -1,9 +1,8 @@
 # Validate Forever 70938 healing from combat logs
 
-The validator reads two local advanced combat logs and checks the periodic
-effects of one spell rank on one recipient. Run it from the DamageTips
-checkout with Python 3.10 or later. It prints a report and requires no
-additional packages.
+The validator reads two local advanced combat logs and checks one spell
+rank on one recipient. Run it from the DamageTips checkout with Python 3.10
+or later. It prints a report and requires no additional packages.
 
 | Spell | Rank 1 | Rank 2 | Rank 3 | Periodic model per recipient |
 | --- | ---: | ---: | ---: | --- |
@@ -11,7 +10,13 @@ additional packages.
 | Riptide | 408521 | 1239242 | 1239243 | 5 ticks, 3 seconds apart, 0.500 total healing-power coefficient |
 
 Both models expect periodic crits to heal for 1.5 times the matching noncrit.
-The validator checks healing from `SPELL_PERIODIC_HEAL` events.
+The validator checks periodic healing from `SPELL_PERIODIC_HEAL` events.
+Blizzard removed Riptide's initial heal. On build 70938, the first effect
+of all three ranks is a dummy effect (`Effect=3`, `EffectBasePointsF=0` in
+`SpellEffect` rows `1072707`, `1236793`, and `1236796`). The spell tooltip
+references the periodic effect, duration, and Chain Heal bonus.
+[Blizzard's November 2 notes](https://us.forums.blizzard.com/en/wow/t/wow-forever-beta-development-notes-%E2%80%93-updated-november-2/2360696/1)
+and [70938 client data provenance](forever-70938-validation.md).
 
 ## Capture and compare
 
@@ -57,6 +62,12 @@ present, must match 70938.
   one point of rounding and needs a noncrit above two raw healing points.
   Wild Growth ticks decay over time, so comparing different positions can
   give a misleading multiplier.
+- **Initial heal absence** applies to Riptide. A positive raw `SPELL_HEAL`
+  matching the selected rank, caster, and recipient fails the check, including
+  fully overhealed or absorbed healing. With no positive rows, the check
+  needs a complete, correctly timed aura at each healing-power value to pass.
+  Initial healing-power gain and crit multiplier display as **N/A** because
+  build 70938 has no initial heal.
 
 Exit code **0** means all checks passed. Exit code **2** means at least one
 model check failed or a capture could not be read using the supported schema.
