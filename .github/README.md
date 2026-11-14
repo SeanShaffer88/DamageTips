@@ -51,6 +51,9 @@ DamageTips parses spell amounts from English descriptions. On other locales, inf
 ## What's new in 1.6.2
 
 - Wild Growth ranks 1–3 show power scaling and Expected HPS per recipient on build 70938 when you enable those lines.
+- All three Riptide ranks regain healing lines and can show scaling and Expected HPS on build 70938. Holy Light, Flash of Light, and Lesser Healing Wave gain scaling and baseline Expected HPS across 21 ranks.
+- Next-rank comparisons now include healing per cast and healing per mana when the next learned rank is readable. Wild Growth comparisons stay per recipient.
+- Open stock spellbook tooltips on build 70938 refresh when Shift, the target, or spell data changes. DamageTips defers its refresh during combat lockdown.
 - Use the offline combat-log validator in the source checkout to check Forever 70938 healing models. [Validator guide](../docs/forever-combat-log-validator.md).
 
 [Full manual](../README.txt) · [Changelog](../CHANGELOG.txt) · [Credits](../CREDITS.txt) · [License (GPL-3.0-or-later)](../LICENSE.txt) · [Report an issue](https://github.com/SeanShaffer88/DamageTips/issues/new?template=bug_report.yml)
