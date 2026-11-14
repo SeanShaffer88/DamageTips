@@ -14,8 +14,8 @@ local function Damage(school, coefficient, expected, modifier)
     return { school = school, spellPower = coefficient, expected = expected, critModifier = modifier }
 end
 
-local function Healing(coefficient)
-    return { healingPower = coefficient, expected = "healing" }
+local function Healing(coefficient, baseline)
+    return { healingPower = coefficient, expected = "healing", baselineHealing = baseline }
 end
 
 -- Fire Blast
@@ -118,9 +118,21 @@ AddRanks(Periodic("mindFlay", "shadow", 3, 1, 0.167, { channel = "base", binaryA
 local wildGrowth = Periodic("wildGrowth", nil, 7, 1, 0.066, { perRecipient = true })
 -- The Chain Heal bonus is a separate effect and is not part of Riptide healing.
 local riptide = Periodic("riptide", nil, 5, 3, 0.100, { tickCrit = true })
+-- Direct heals use the tooltip amount and sheet crit without spell-specific modifiers.
+local holyLight = Healing(0.714, true)
+local flashOrLesserWave = Healing(0.429, true)
 addon.SpellPowerModels70938 = {
     [408120] = wildGrowth, [1238214] = wildGrowth, [1238215] = wildGrowth,
     [408521] = riptide, [1239242] = riptide, [1239243] = riptide,
+    -- Holy Light ranks 1–9.
+    [635] = holyLight, [639] = holyLight, [647] = holyLight, [1026] = holyLight,
+    [1042] = holyLight, [3472] = holyLight, [10328] = holyLight, [10329] = holyLight, [25292] = holyLight,
+    -- Flash of Light ranks 1–6.
+    [19750] = flashOrLesserWave, [19939] = flashOrLesserWave, [19940] = flashOrLesserWave,
+    [19941] = flashOrLesserWave, [19942] = flashOrLesserWave, [19943] = flashOrLesserWave,
+    -- Lesser Healing Wave ranks 1–6.
+    [8004] = flashOrLesserWave, [8008] = flashOrLesserWave, [8010] = flashOrLesserWave,
+    [10466] = flashOrLesserWave, [10467] = flashOrLesserWave, [10468] = flashOrLesserWave,
 }
 
 -- BEGIN GENERATED 70938 ALLOWLIST
