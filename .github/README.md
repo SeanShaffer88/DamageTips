@@ -2,7 +2,7 @@
 
 DamageTips adds DPS, HPS, absorb amounts, and mana costs to action bar and spellbook tooltips in **World of Warcraft: Forever**. It can also show damage or healing per mana, compare spell ranks, and estimate how many casts your current mana can sustain.
 
-**[Download DamageTips 1.6.1 ZIP](https://github.com/SeanShaffer88/DamageTips/releases/download/v1.6.1/DamageTips-1.6.1.zip)** · [Latest release and notes](https://github.com/SeanShaffer88/DamageTips/releases/latest)
+**[Download DamageTips 1.6.2 ZIP](https://github.com/SeanShaffer88/DamageTips/releases/download/v1.6.2/DamageTips-1.6.2.zip)** · [Latest release and notes](https://github.com/SeanShaffer88/DamageTips/releases/latest)
 
 ## Install
 
@@ -48,11 +48,9 @@ DamageTips targets WoW Forever 1.60.1 (Interface 16001). **Spell and attack powe
 
 DamageTips parses spell amounts from English descriptions. On other locales, information supplied by the game, such as mana cost, can still appear when available.
 
-## What's new in 1.6.1
+## What's new in 1.6.2
 
-- DamageTips lines return when WoW refreshes a tooltip, without duplicates. Expected damage uses current player stats and eligible target data.
-- Spell data refreshes more reliably, next-rank comparisons use the correct spellbook ranks, and Shift details work for healing and absorbs.
-- Settings imports are validated before they apply. Imports and resets update the minimap button immediately.
-- Build 70938 gains power scaling and expected output for supported spell ranks.
+- Wild Growth ranks 1–3 show power scaling and Expected HPS per recipient on build 70938 when you enable those lines.
+- Use the offline combat-log validator in the source checkout to check Forever 70938 healing models. [Validator guide](../docs/forever-combat-log-validator.md).
 
 [Full manual](../README.txt) · [Changelog](../CHANGELOG.txt) · [Credits](../CREDITS.txt) · [License (GPL-3.0-or-later)](../LICENSE.txt) · [Report an issue](https://github.com/SeanShaffer88/DamageTips/issues/new?template=bug_report.yml)
