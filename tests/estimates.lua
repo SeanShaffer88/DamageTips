@@ -1205,6 +1205,44 @@ check70938Output(2136, fireBlast, "+100 Fire spell power", "Expected DPS")
 check70938Output(2061, directHealText, "+100 healing power", "Expected HPS")
 check70938Output(172, corruptionText, "/ tick", "Expected DPS (full effect")
 check70938Output(116, frostboltText, "+100 Frost spell power")
+do
+    local families = {
+        { ranks = { 635, 639, 647, 1026, 1042, 3472, 10328, 10329, 25292 },
+            cast = 2500, gain = "71.4", hps = "86.4", expected = "95.0" },
+        { ranks = { 19750, 19939, 19940, 19941, 19942, 19943 },
+            cast = 1500, gain = "42.9", hps = "144.0", expected = "158.4" },
+        { ranks = { 8004, 8008, 8010, 10466, 10467, 10468 },
+            cast = 1500, gain = "42.9", hps = "144.0", expected = "158.4" },
+    }
+    local savedCrit, savedHealing, savedCooldown, savedCast, savedGCD = crit, healing, cooldown, castTime, gcd
+    crit, healing, cooldown, gcd = 20, 999, 0, 1500
+    for _, family in ipairs(families) do
+        castTime = family.cast
+        for _, id in ipairs(family.ranks) do
+            periodicHover(id, directHealText)
+            expect(has("HPS: " .. family.hps)
+                and has("+100 healing power: +" .. family.gain .. " healing / cast (nominal)")
+                and has("Expected HPS (baseline): " .. family.expected .. " (20.0% sheet crit)"),
+                "70938 direct heal rank " .. id .. " uses the tooltip amount once and the correct cast time")
+        end
+    end
+    crit, castTime = secret, 2500
+    periodicHover(635, directHealText)
+    expect(has("HPS: 86.4") and has("+71.4 healing / cast") and not has("Expected HPS"),
+        "restricted crit hides only the expected direct healing line")
+    crit = 20
+    for _, otherBuild in ipairs({ "70888", "70939" }) do
+        buildNumber = otherBuild
+        periodicHover(635, directHealText)
+        expect(has("HPS: 86.4") and not has("+100 healing power") and not has("Expected HPS"),
+            "unverified direct heal preserves ordinary HPS on build " .. otherBuild)
+    end
+    buildNumber = "70938"
+    periodicHover(19968, directHealText)
+    expect(has("HPS: 86.4") and not has("+100 healing power") and not has("Expected HPS"),
+        "unranked Holy Light aliases do not gain a verified model")
+    crit, healing, cooldown, castTime, gcd = savedCrit, savedHealing, savedCooldown, savedCast, savedGCD
+end
 expect(estimates.GetSpellModel(686) == nil, "70938 rejects an unapproved legacy model")
 expect(estimates.GetSpellModel(123) == nil, "allowlist cannot create a spell model")
 expect(estimates.GetSpellModel(secret) == nil and estimates.GetSpellModel(1.5) == nil,
@@ -1215,8 +1253,8 @@ local exported = chat[#chat]
 local statusStart = #chat
 command("status")
 expect(chatContains(statusStart, "version 1.60.1, build 70938, Interface 16001"), "status prints the exact build")
-expect(chatContains(statusStart, "enabled for 7 verified spell IDs"),
-    "status counts only enabled legacy IDs plus the three build-specific ranks")
+expect(chatContains(statusStart, "enabled for 28 verified spell IDs"),
+    "status counts only enabled legacy IDs plus the 24 build-specific ranks")
 expect(chatContains(statusStart, "power scaling |cff00ff00on|r, expected DPS/HPS |cff00ff00on|r"),
     "status reports saved option flags")
 command("export")
@@ -1244,8 +1282,8 @@ GetBuildInfo = getBuild
 
 namespace.Verified70938, buildNumber = verified70938, 70938
 local productionStatus, _, _, _, productionCount = estimates.GetModelBuildStatus()
-expect(productionStatus == "verified" and productionCount == 212,
-    "70938 includes the 209 legacy ranks and three build-specific ranks")
+expect(productionStatus == "verified" and productionCount == 233,
+    "70938 includes the 209 legacy ranks and 24 build-specific ranks")
 check70938Output(2136, fireBlast, "+100 Fire spell power", "Expected DPS")
 check70938Output(2061, directHealText, "+100 healing power", "Expected HPS")
 check70938Output(172, corruptionText, "/ tick", "Expected DPS (full effect")

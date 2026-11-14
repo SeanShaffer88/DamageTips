@@ -310,7 +310,7 @@ local function PeriodicScalingLineText(stat, effect, output)
         FormatPowerGain(effect.coefficient * effect.ticks), effect.ticks)
 end
 
-local function ExpectedLineText(kind, rate, hit, crit, effect, target, modifiers)
+local function ExpectedLineText(kind, rate, hit, crit, effect, target, modifiers, baselineHealing)
     local value = FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], rate))
     local context, resistText = "equal-level PvE", ""
     if target and kind == "spell" then
@@ -335,6 +335,9 @@ local function ExpectedLineText(kind, rate, hit, crit, effect, target, modifiers
             period, context, value, hit, hitUnit, critText, resistText)
     end
     if kind == "healing" then
+        if baselineHealing then
+            return string_format("Expected HPS (baseline): %s (%.1f%% sheet crit)", value, crit)
+        end
         return string_format("Expected HPS: %s (%.1f%% crit)", value, crit)
     elseif kind == "landed" then
         if target then
@@ -910,7 +913,8 @@ local function AddPowerLines(tooltip, t, dmgColor)
             t.expectedEffect, t.tickTotal, model)
         if rate then
             local color = model.expected == "healing" and DB.healColor or dmgColor
-            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, t.expectedEffect, target, modifiers), color)
+            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, t.expectedEffect, target,
+                modifiers, model.baselineHealing), color)
             if modifiers then
                 AddStyledLine(tooltip, "Modifiers: " .. table_concat(modifiers.labels, ", "), color)
             end

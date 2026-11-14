@@ -109,6 +109,10 @@ Notes
   Healing Wave. Frostbolt, Arcane Shot and the verified Hammer of Wrath
   variant (429151) show scaling only. Bloodthirst shows attack power
   scaling and a DPS estimate for landed hits.
+* On build 70938, Holy Light, Flash of Light and Lesser Healing Wave also
+  show nominal healing-power scaling and baseline Expected HPS. The
+  estimate uses the current tooltip range and character-sheet crit, with
+  the standard 1.5x healing crit. Spell-specific modifiers are not added.
 * Expected output for direct spells uses the game's current tooltip amount
   and the spell's cast/cooldown/GCD cadence. The fallback equal-level spell
   hit model starts at 96% and adds sheet hit modifiers, bounded to 0–100%.
