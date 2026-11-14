@@ -2,6 +2,7 @@
 local path = assert(arg[1], "provide addon directory")
 local now, currentID = 100, 1001
 local records, petRecords, skills, descriptions, slots, events, timers = {}, {}, {}, {}, {}, {}, {}
+local manaCosts = {}
 local tooltipLines, owner, requestCounts = {}, {}, {}
 local mode, assertions, errors = "async", 0, {}
 local secret = setmetatable({}, { __index = function() error("secret record inspected") end })
@@ -44,7 +45,7 @@ end
 C_Spell = {
     GetSpellInfo = function() return { castTime = 2000 } end,
     GetSpellDescription = function(id) return descriptions[id] end,
-    GetSpellPowerCost = function() return { { type = 0, cost = 100 } } end,
+    GetSpellPowerCost = function(id) return manaCosts[id] or { { type = 0, cost = 100 } } end,
     RequestLoadSpellData = function(id)
         requestCounts[id] = (requestCounts[id] or 0) + 1
         if mode == "throw" then error("request rejected") end
@@ -171,6 +172,92 @@ records[103].isOffSpec, records[103].isPassive = false, true
 fire("SPELLS_CHANGED")
 hover(1001)
 expect(count("Next rank: DPS 90.0") == 1, "passive spells do not interfere with active rank lookup")
+
+skills = { { itemIndexOffset = 400, numSpellBookItems = 2 } }
+records[401] = row("Test Heal", "Rank 1", 5001)
+records[402] = row("Test Heal", "Rank 2", 5002)
+descriptions[5001] = "Heals a friendly target for 180 to 220."
+descriptions[5002] = "Heals a friendly target for 280 to 320."
+manaCosts[5001] = { { type = 0, cost = 100, minCost = 100, costPerSec = 0, requiredAuraID = 0 } }
+manaCosts[5002] = { { type = 0, cost = 200, minCost = 200, costPerSec = 0, requiredAuraID = 0 } }
+fire("SPELLS_CHANGED")
+hover(5001)
+expect(count("Next rank: healing per cast 300 (+50%)") == 1,
+    "a readable adjacent healing rank compares the average heal per cast")
+expect(count("Next rank: healing per mana 1.50 (-25%)") == 1,
+    "a larger heal can still lose efficiency when the next rank costs more mana")
+
+manaCosts[5002][1].cost = secret
+hover(5001)
+expect(count("Next rank: healing per cast 300 (+50%)") == 1 and count("Next rank: healing per mana") == 0,
+    "restricted mana preserves the readable per-cast comparison")
+manaCosts[5002][1].cost, manaCosts[5002][1].requiredAuraID = 200, 42
+hover(5001)
+expect(count("Next rank: healing per cast 300 (+50%)") == 1 and count("Next rank: healing per mana") == 0,
+    "the efficiency comparison requires an unconditional upfront cost")
+manaCosts[5002][1].requiredAuraID = 0
+
+local nextHealText = descriptions[5002]
+descriptions[5002] = secret
+hover(5001)
+expect(count("HPS: 100.0") == 1 and count("Next rank: healing") == 0,
+    "a restricted next-rank description preserves current-rank healing")
+descriptions[5002] = ""
+hover(5001)
+expect(count("HPS: 100.0") == 1 and count("Next rank: healing") == 0,
+    "an unloaded next rank has no guessed healing comparison")
+if events.SPELL_DATA_LOAD_RESULT then fire("SPELL_DATA_LOAD_RESULT", 5002, false) end
+descriptions[5002] = nextHealText
+fire("SPELL_TEXT_UPDATE", 5002)
+hover(5001)
+expect(count("Next rank: healing per cast 300 (+50%)") == 1 and count("Next rank: healing per mana 1.50 (-25%)") == 1,
+    "the next hover sees a rank after its description becomes readable")
+
+skills[1].numSpellBookItems = 3
+records[403] = row("Test Heal", "Rank 2", 5003)
+descriptions[5003] = "Heals a friendly target for 400 to 500."
+fire("SPELLS_CHANGED")
+hover(5001)
+expect(count("HPS: 100.0") == 1 and count("Next rank: healing") == 0,
+    "distinct spells claiming the same next rank are ambiguous")
+skills[1].numSpellBookItems = 2
+records[402].subName = secret
+fire("SPELLS_CHANGED")
+hover(5001)
+expect(count("Next rank: healing") == 0, "a restricted adjacent rank label is not guessed")
+records[402].subName = "Rank 2"
+fire("SPELLS_CHANGED")
+
+records[401] = row("Regrowth", "Rank 1", 8936)
+records[402] = row("Regrowth", "Rank 2", 8938)
+descriptions[8936] = "Heals a friendly target for 90 to 110 and another 110 over 21 sec."
+descriptions[8938] = "Heals a friendly target for 150 to 170 and another 140 over 21 sec."
+fire("SPELLS_CHANGED")
+hover(8936)
+expect(count("Next rank: healing per cast 300 (+43%)") == 1,
+    "mixed healing compares its direct heal and enabled periodic total")
+DamageTipsDB.includeDoT = false
+hover(8936)
+expect(count("Next rank: healing per cast 160 (+60%)") == 1,
+    "mixed healing still compares its direct heal with periodic effects disabled")
+DamageTipsDB.includeDoT = true
+
+records[401] = row("Wild Growth", "Rank 1", 408120)
+records[402] = row("Wild Growth", "Rank 2", 1238214)
+descriptions[408120] = "Heals the target and their party for 280 over 7 sec."
+descriptions[1238214] = "Heals the target and their party for 400 over 7 sec."
+manaCosts[408120] = { { type = 0, cost = 140, minCost = 140, costPerSec = 0, requiredAuraID = 0 } }
+manaCosts[1238214] = { { type = 0, cost = 250, minCost = 250, costPerSec = 0, requiredAuraID = 0 } }
+fire("SPELLS_CHANGED")
+hover(408120)
+expect(count("Next rank: healing per cast (per recipient) 400 (+43%)") == 1,
+    "Wild Growth compares the modeled whole heal for one recipient")
+expect(count("Next rank: healing per mana (per recipient) 1.60 (-20%)") == 1,
+    "Wild Growth efficiency is per recipient too")
+DamageTipsDB.includeDoT = false
+hover(408120)
+expect(count("Next rank: healing") == 0, "a periodic-only heal has no comparison with periodic effects disabled")
+DamageTipsDB.includeDoT = true
 
 DamageTipsDB.showNextRank = false
 mode = "throw"
