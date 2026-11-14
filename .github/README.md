@@ -19,13 +19,11 @@ DamageTips adds DPS, HPS, absorb amounts, and mana costs to action bar and spell
 
 ## Screenshots
 
-**Healing Touch** shows healing per second, healing per mana, mana cost, and Expected HPS.
+Click either screenshot to view it at full size.
 
-![Healing Touch spellbook tooltip with HPS, HPM, mana cost, and Expected HPS](../docs/screenshots/healing-touch.png)
-
-**Wrath** shows damage per second, damage per minute, mana cost, and Expected DPS for equal-level PvE.
-
-![Wrath spellbook tooltip with DPS, DPM, mana cost, and equal-level PvE Expected DPS](../docs/screenshots/wrath.png)
+| Healing Touch | Wrath |
+| :---: | :---: |
+| [![Healing Touch spellbook tooltip with HPS, HPM, mana cost, and Expected HPS](../docs/screenshots/healing-touch.png)](../docs/screenshots/healing-touch.png?raw=true) | [![Wrath spellbook tooltip with DPS, DPM, mana cost, and equal-level PvE Expected DPS](../docs/screenshots/wrath.png)](../docs/screenshots/wrath.png?raw=true) |
 
 ## Compatibility
 
