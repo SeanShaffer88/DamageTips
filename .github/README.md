@@ -17,6 +17,16 @@ DamageTips adds DPS, HPS, absorb amounts, and mana costs to action bar and spell
 - In **Advanced**, import or export settings and toggle the minimap button.
 - Run `/dtips status` for the detected build, verified spell model count, and estimate settings. Run `/dtips help` for more commands.
 
+## Screenshots
+
+**Healing Touch** shows healing per second, healing per mana, mana cost, and Expected HPS.
+
+![Healing Touch spellbook tooltip with HPS, HPM, mana cost, and Expected HPS](../docs/screenshots/healing-touch.png)
+
+**Wrath** shows damage per second, damage per minute, mana cost, and Expected DPS for equal-level PvE.
+
+![Wrath spellbook tooltip with DPS, DPM, mana cost, and equal-level PvE Expected DPS](../docs/screenshots/wrath.png)
+
 ## Compatibility
 
 DamageTips targets WoW Forever 1.60.1 (Interface 16001). **Spell and attack power scaling** and **Expected DPS and HPS** are off by default and appear only for supported spell ranks on builds **70888** and **70938**. Turn them on in **Lines**.
