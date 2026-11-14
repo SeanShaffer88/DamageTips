@@ -11,6 +11,10 @@ tooltip's full heal once and reports raw healing per recipient.
 
 ## Combat-log gate for 1.6.2
 
+The [offline combat-log validator](forever-combat-log-validator.md) checks
+tick count, healing-power gain, and the periodic crit multiplier from the two
+captures. Record the accompanying tooltip totals for the gate below.
+
 1. On 70938, record `/dtips status`, the spell rank, the tooltip's full heal,
    and the character's bonus healing. Turn on `/combatlog`.
 2. Use one caster and follow one recipient. Keep their level, talents, forms,
