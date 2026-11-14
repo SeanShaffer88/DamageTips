@@ -16,6 +16,7 @@ local healText = "Restores 160 health."
 local description, dataOverride = damageText, nil
 local knownCalls, regenCalls, costCalls, critCalls, requests = 0, 0, 0, 0, 0
 local assertions = 0
+local shiftDown = false
 local timers = {}
 Enum = { TooltipDataLineType = { SpellDescription = 34 } }
 
@@ -67,12 +68,15 @@ function GetCombatRatingBonus(index) assert(index == CR_HIT_SPELL); return hitRa
 function GetSpellHitModifier() return hitModifier end
 function GetCritChance() return meleeCrit end
 function UnitAttackPower(unit) assert(unit == "player"); return apBase, apPositive, apNegative end
-function IsShiftKeyDown() return false end
+function IsShiftKeyDown() return shiftDown end
 function wipe(t) for k in pairs(t) do t[k] = nil end end
 tinsert = table.insert
 STANDARD_TEXT_FONT = "test-font"
 SlashCmdList, UISpecialFrames, UIParent = {}, {}, {}
 DamageTipsDB = { showDamage = true, showMinimap = false, manaMode = 3 }
+DamageTipsDB.unrelatedLegacyValue = "keep me"
+DamageTipsDB.spellRules = { ["234"] = 12, ["0234"] = "hide", [567] = 0, ["789"] = math.huge }
+local savedDB = DamageTipsDB
 C_Spell = {
     GetSpellInfo = function() return { castTime = castTime } end,
     GetSpellPowerCost = function()
@@ -110,8 +114,11 @@ function widget:SetScript(name, fn) self.scripts[name] = fn end
 function widget:RegisterEvent(name) events[name] = self end
 function widget:UnregisterEvent(name) if events[name] == self then events[name] = nil end end
 function widget:SetPoint(...) self.point = { ... } end
+function widget:ClearAllPoints() self.point = nil end
 function widget:SetSize(width, height) self.width, self.height = width, height end
 function widget:SetText(value) self.text = value end
+function widget:GetText() return self.text end
+function widget:ClearFocus() self.focused = false end
 function widget:SetChecked(value) self.checked = value end
 function widget:GetChecked() return self.checked end
 function widget:Hide() self.visible = false end
@@ -125,12 +132,15 @@ for _, method in ipairs({
     "RegisterForClicks", "SetAllPoints", "SetColorTexture", "SetMinMaxValues", "SetValueStep",
     "SetObeyStepOnDrag", "SetValue", "SetTextColor", "SetFont", "SetWidth", "SetJustifyH",
     "SetAutoFocus", "StartMoving", "StopMovingOrSizing", "LockHighlight", "UnlockHighlight",
+    "SetFrameLevel", "SetHighlightTexture", "SetTexture",
 }) do widget[method] = function() end end
 function CreateFrame(kind, name, parent)
     local frame = newWidget(parent)
+    frame.kind = kind
     if name then _G[name] = frame end
     return frame
 end
+Minimap = newWidget()
 
 GameTooltip = { shown = true }
 function GameTooltip:HookScript(_, fn) self.onCleared = fn end
@@ -180,6 +190,24 @@ assert(loadfile(addonPath .. "/SpellModifiers.lua"))("DamageTips", namespace)
 assert(loadfile(addonPath .. "/SpellEstimates.lua"))("DamageTips", namespace)
 assert(loadfile(addonPath .. "/DamageTips.lua"))("DamageTips", namespace)
 fireEvent("ADDON_LOADED", "DamageTips")
+local minimapButton = assert(DamageTipsMinimapButton)
+expect(not minimapButton:IsShown(), "legacy minimap preference applies at startup")
+expect(DamageTipsDB == savedDB and DamageTipsDB.unrelatedLegacyValue == "keep me"
+    and DamageTipsDB.spellRules["234"] == 12 and DamageTipsDB.spellRules["567"] == 0
+    and DamageTipsDB.spellRules["0234"] == nil and DamageTipsDB.spellRules["789"] == nil,
+    "load keeps the account DB and canonical rules while sanitizing bad values")
+command("import DT1;showMinimap=1;minimapAngle=-270;spellRules=234:12")
+expect(minimapButton:IsShown() and DamageTipsDB.minimapAngle == 90
+    and math.abs(minimapButton.point[4]) < 0.01 and minimapButton.point[5] > 79,
+    "import updates visibility and position with no config frame")
+command("import DT1;showMinimap=0")
+expect(not minimapButton:IsShown(), "partial import hides minimap with no config frame")
+command("reset")
+expect(minimapButton:IsShown() and DamageTipsDB.minimapAngle == 90 and DamageTipsDB.spellRules["234"] == 12,
+    "reset syncs minimap and retains angle and rules with no config frame")
+command("import DT1;showMinimap=0;manaMode=3;spellRules=")
+expect(not minimapButton:IsShown() and next(DamageTipsDB.spellRules) == nil,
+    "empty rules field clears rules and partial import preserves other fields")
 expect(DamageTipsDB.showManaSustain == false and DamageTipsDB.showCasterStats == false,
     "old SavedVariables default both estimates off")
 hover()
@@ -1249,6 +1277,96 @@ dataOverride = { lines = {
 now = now + 2
 hover()
 expect(not has("DPS:") and not has("Expected DPS"), "partly secret fallback does not parse a partial spell")
+
+-- Invalid input must leave both the saved state and the visible button alone.
+command("import DT1;showMinimap=1;minimapAngle=90;spellRules=234:1e-9;futureFlag=kept-by-newer-client")
+expect(DamageTipsDB.spellRules["234"] == 1e-9 and minimapButton:IsShown(),
+    "valid partial import preserves finite exponent values and ignores future keys")
+command("export")
+local settingsBefore = chat[#chat]
+local priorAnchor = minimapButton.point
+for _, bad in ipairs({
+    "malformed;showMinimap=0", "showMinimap=0;showMinimap=1",
+    "showMinimap=0;;showDPS=1", "minimapAngle=1e999;showMinimap=0",
+    "minimapAngle=invalid;showMinimap=0", "fontSize=21;showMinimap=0",
+    "damageColor=12345;showMinimap=0", "manaMode=9;showMinimap=0",
+    "spellRules=234:1e999;showMinimap=0", "spellRules=234:-1;showMinimap=0",
+    "spellRules=0:hide;showMinimap=0", "spellRules=234:hide,0234:12;showMinimap=0",
+    "spellRules=234:hide,,567:0;showMinimap=0",
+}) do
+    command("import DT1;" .. bad)
+    expect(chat[#chat]:find("import failed", 1, true), "invalid DT1 is rejected: " .. bad)
+    command("export")
+    expect(chat[#chat] == settingsBefore and minimapButton:IsShown() and minimapButton.point == priorAnchor,
+        "failed import preserves settings and minimap anchor: " .. bad)
+end
+command("import " .. settingsBefore)
+expect(DamageTipsDB.spellRules["234"] == 1e-9 and minimapButton:IsShown(), "full DT1 export re-imports")
+command("import DT1;")
+expect(chat[#chat]:find("settings imported", 1, true) and DamageTipsDB.spellRules["234"] == 1e-9,
+    "legacy DT1 no-op remains compatible")
+
+local importBox
+for _, child in ipairs(config.panels.adv.children) do
+    if child.kind == "EditBox" then importBox = child end
+end
+assert(importBox and importBox.scripts.OnEnterPressed)
+local invalidPanelImport = "DT1;showMinimap=0;fontSize=bad"
+importBox:SetText(invalidPanelImport)
+importBox.scripts.OnEnterPressed(importBox)
+expect(minimapButton:IsShown() and importBox:GetText() == invalidPanelImport,
+    "failed panel import leaves settings and the typed input intact")
+importBox:SetText("DT1;showMinimap=0;minimapAngle=180")
+importBox.scripts.OnEnterPressed(importBox)
+expect(not minimapButton:IsShown() and DamageTipsDB.minimapAngle == 180 and importBox:GetText() == "",
+    "panel import uses the same validated commit")
+local resetButton
+for _, child in ipairs(config.children) do
+    if child.kind == "Button" and child.text and child.text:find("Reset", 1, true) then resetButton = child end
+end
+assert(resetButton and resetButton.scripts.OnClick)
+resetButton.scripts.OnClick(resetButton)
+expect(minimapButton:IsShown() and minimapButton.point[4] < -79 and DamageTipsDB.spellRules["234"] == 1e-9,
+    "panel reset also syncs the minimap and preserves spell rules")
+
+local function countMatches(s)
+    local count = 0
+    for _, line in ipairs(tooltipLines) do
+        if line:find(s, 1, true) then count = count + 1 end
+    end
+    return count
+end
+command("import DT1;showMana=0;showHealing=1;shiftDetails=1;includeDoT=1")
+dataOverride, castTime, cooldown, gcd = nil, 2000, 0, 1500
+spellID, description = 8936, "Heals a friendly target for 90 to 110 and another 110 over 21 sec."
+hover()
+expect(has("HPS:") and has("Hold Shift") and not has("Healing over time"), "healing-only tooltip offers Shift details")
+shiftDown = true
+hover()
+expect(has("Direct healing:") and has("Healing over time: 110") and has("Healing divisor: 21.00") and not has("Hold Shift")
+    and not has("Healing: 210"), "mixed healing details distinguish direct healing and HoT without repeating the total")
+command("import DT1;includeDoT=0")
+hover()
+expect(has("HPS: 50.0") and not has("Healing over time") and has("Healing divisor: 2.00"),
+    "Shift breakdown excludes disabled periodic healing")
+command("import DT1;includeDoT=1")
+spellID, description = 8921, "Burns the enemy for 100 Arcane damage and then an additional 80 Arcane damage over 9 sec."
+hover()
+expect(has("Direct damage: 100") and has("Damage over time: 80") and not has("Damage: 180"),
+    "mixed damage details do not repeat the full spell total")
+spellID, description = 17, "Draws on the soul of the party member to shield them, absorbing 174 damage. Lasts 30 sec."
+hover()
+expect(has("Absorbs: 174") and has("Absorb per cast: 174") and not has("DPS:"), "absorb-only tooltip has Shift details")
+command("hide 17")
+hover()
+expect(#tooltipLines == 0, "hidden spell has no Shift details")
+command("show 17")
+command("import DT1;showHealing=0")
+hover()
+expect(#tooltipLines == 0, "disabled healing suppresses absorb details")
+command("import DT1;showHealing=1;shiftDetails=0")
+hover()
+expect(has("Absorbs: 174") and countMatches("174") == 1, "disabled Shift details leave the standard absorb line")
 
 realPrint(string.format("DamageTips Forever estimate mocks passed (%d assertions, including %d prior, %d alpha.3, %d alpha.2 and %d original).",
     assertions, alpha4Assertions, alpha3Assertions, alpha2Assertions, previousAssertions))

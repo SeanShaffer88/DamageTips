@@ -1,4 +1,7 @@
 Unreleased
+- Apply DT1 settings only after the entire import passes validation.
+  Import and reset immediately sync the minimap button.
+- Show Shift details for direct heals, periodic healing and absorbs.
 - Use the same spell description parsing for basic and expected output.
   Disabling periodic effects keeps the direct part of mixed spells.
 - Recover from failed spell-data requests and refresh only matching
