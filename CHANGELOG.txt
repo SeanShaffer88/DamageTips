@@ -1,4 +1,4 @@
-Unreleased
+1.6.1
 - Restore DamageTips lines when WoW rebuilds an action-bar or spellbook
   tooltip, with one set of lines per rebuild.
 - Reuse public spell parsing while recalculating estimates from current

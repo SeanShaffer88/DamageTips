@@ -2,7 +2,7 @@
 ## Title: |cffffd100DamageTips|r
 ## Notes: Adds DPS, DPM, damage per mana and mana cost to action bar and spellbook spell tooltips.
 ## Author: Malikor
-## Version: 1.6.0
+## Version: 1.6.1
 ## IconTexture: Interface\AddOns\DamageTips\Media\icon.tga
 ## AddonCompartmentFunc: DamageTips_OnAddonCompartmentClick
 ## SavedVariables: DamageTipsDB
