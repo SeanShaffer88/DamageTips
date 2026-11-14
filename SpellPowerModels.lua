@@ -116,8 +116,11 @@ AddRanks(Periodic("mindFlay", "shadow", 3, 1, 0.167, { channel = "base", binaryA
 -- 70938 uses 6.6% healing power on the periodic effect; 70888 uses 3.3%.
 -- Wild Growth is front-loaded, so only display nominal full-effect scaling.
 local wildGrowth = Periodic("wildGrowth", nil, 7, 1, 0.066, { perRecipient = true })
+-- The Chain Heal bonus is a separate effect and is not part of Riptide healing.
+local riptide = Periodic("riptide", nil, 5, 3, 0.100, { tickCrit = true })
 addon.SpellPowerModels70938 = {
     [408120] = wildGrowth, [1238214] = wildGrowth, [1238215] = wildGrowth,
+    [408521] = riptide, [1239242] = riptide, [1239243] = riptide,
 }
 
 -- BEGIN GENERATED 70938 ALLOWLIST

@@ -145,6 +145,8 @@ Notes
   on landed hits in either mode. Healing estimates are target-independent.
 * Supported periodic families are Corruption, Shadow Word: Pain,
   Rejuvenation, Renew, Regrowth, Moonfire, Immolate, Holy Fire and Fireball.
+  Build 70938 also supports all three Riptide ranks. Its estimated healing
+  covers five ticks over 15 seconds and excludes the separate Chain Heal bonus.
   Arcane Missiles and Mind Flay use their full base channels. Serpent Sting
   shows ranged power scaling. Each estimate needs the recognized English
   description and the build's tick schedule. The scaling lines are nominal

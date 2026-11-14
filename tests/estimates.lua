@@ -1205,6 +1205,66 @@ check70938Output(2136, fireBlast, "+100 Fire spell power", "Expected DPS")
 check70938Output(2061, directHealText, "+100 healing power", "Expected HPS")
 check70938Output(172, corruptionText, "/ tick", "Expected DPS (full effect")
 check70938Output(116, frostboltText, "+100 Frost spell power")
+do
+    local ranks = { 408521, 1239242, 1239243 }
+    local text = "Heals a friendly target for 450 over 15 sec, and increases the effectiveness"
+        .. " of your Chain Heal casts directly on that target by 25%."
+    local savedCrit, savedCooldown, savedCast, savedGCD = crit, cooldown, castTime, gcd
+    local savedHealing, savedHit, savedRating = healing, hitModifier, hitRating
+    crit, cooldown, castTime, gcd = 20, 12000, 0, 1500
+    command("import DT1;showHealing=1;includeDoT=1;showPowerScaling=1;showExpectedThroughput=1")
+    for _, id in ipairs(ranks) do
+        periodicHover(id, text)
+        expect(has("HPS: 30.0")
+            and has("+100 healing power: +10 healing / tick (+50 over 5 ticks)")
+            and has("Expected HPS (full effect): 33.0 (20.0% crit)"),
+            "Riptide rank " .. id .. " restores healing, five-tick scaling, and Expected HPS")
+    end
+    local parsed = estimates.ParseComponents(text, estimates.GetSpellModel(ranks[1]), true)
+    expect(parsed.healing.direct == 0 and parsed.healing.periodic == 450
+        and parsed.effect.interval == 3 and parsed.effect.duration == 15
+        and parsed.effect.hitMode == "none" and parsed.effect.tickCrit and not parsed.effect.directCrit,
+        "Riptide is periodic healing only and does not roll spell hit")
+    healing, hitModifier, hitRating = 999, 0, 0
+    periodicHover(ranks[1], text)
+    expect(has("Expected HPS (full effect): 33.0 (20.0% crit)"),
+        "Riptide uses the tooltip total once and does not apply spell hit")
+    crit = 100
+    periodicHover(ranks[1], text)
+    expect(has("Expected HPS (full effect): 45.0 (100.0% crit)"),
+        "Riptide applies the 1.5x healing estimate when every tick crits")
+    crit = secret
+    periodicHover(ranks[1], text)
+    expect(has("HPS: 30.0") and has("+50 over 5 ticks") and not has("Expected HPS"),
+        "restricted crit suppresses Expected HPS without hiding baseline and nominal scaling")
+    crit = 20
+    command("import DT1;includeDoT=0")
+    periodicHover(ranks[1], text)
+    expect(not has("HPS:") and not has("Expected HPS") and not has("+100 healing power"),
+        "the periodic toggle hides the pure Riptide heal and model lines")
+    command("import DT1;includeDoT=1")
+    for _, variant in ipairs({
+        text:gsub("450", "4,50", 1),
+        text:gsub("15 sec", "12 sec", 1),
+        (text:gsub("your Chain Heal", "your Healing Wave", 1)),
+    }) do
+        periodicHover(ranks[1], variant)
+        expect(not has("Expected HPS") and not has("+100 healing power"),
+            "unrecognized Riptide tooltip text does not activate the model")
+    end
+    for _, otherBuild in ipairs({ "70888", "70939" }) do
+        buildNumber = otherBuild
+        periodicHover(ranks[1], text)
+        expect(not has("HPS:") and not has("Expected HPS") and not has("+100 healing power"),
+            "Riptide does not change behavior on build " .. otherBuild)
+    end
+    buildNumber = "70938"
+    periodicHover(409954, text)
+    expect(not has("Expected HPS") and not has("+100 healing power"),
+        "the separate spell that teaches Riptide does not gain modeled output")
+    crit, cooldown, castTime, gcd = savedCrit, savedCooldown, savedCast, savedGCD
+    healing, hitModifier, hitRating = savedHealing, savedHit, savedRating
+end
 expect(estimates.GetSpellModel(686) == nil, "70938 rejects an unapproved legacy model")
 expect(estimates.GetSpellModel(123) == nil, "allowlist cannot create a spell model")
 expect(estimates.GetSpellModel(secret) == nil and estimates.GetSpellModel(1.5) == nil,
@@ -1215,8 +1275,8 @@ local exported = chat[#chat]
 local statusStart = #chat
 command("status")
 expect(chatContains(statusStart, "version 1.60.1, build 70938, Interface 16001"), "status prints the exact build")
-expect(chatContains(statusStart, "enabled for 7 verified spell IDs"),
-    "status counts only enabled legacy IDs plus the three build-specific ranks")
+expect(chatContains(statusStart, "enabled for 10 verified spell IDs"),
+    "status counts only enabled legacy IDs plus the six build-specific ranks")
 expect(chatContains(statusStart, "power scaling |cff00ff00on|r, expected DPS/HPS |cff00ff00on|r"),
     "status reports saved option flags")
 command("export")
@@ -1244,8 +1304,8 @@ GetBuildInfo = getBuild
 
 namespace.Verified70938, buildNumber = verified70938, 70938
 local productionStatus, _, _, _, productionCount = estimates.GetModelBuildStatus()
-expect(productionStatus == "verified" and productionCount == 212,
-    "70938 includes the 209 legacy ranks and three build-specific ranks")
+expect(productionStatus == "verified" and productionCount == 215,
+    "70938 includes the 209 legacy ranks and six build-specific ranks")
 check70938Output(2136, fireBlast, "+100 Fire spell power", "Expected DPS")
 check70938Output(2061, directHealText, "+100 healing power", "Expected HPS")
 check70938Output(172, corruptionText, "/ tick", "Expected DPS (full effect")
