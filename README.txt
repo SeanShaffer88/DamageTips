@@ -186,6 +186,10 @@ Notes
   refresh. Stock action bars use WoW's own tooltip update.
 * Next-rank comparisons use readable ranked spells from the player spellbook.
   The current spell must match an indexed rank before a comparison is shown.
+  For healing spells, the comparison shows healing per cast and, when both
+  ranks have readable fixed mana costs, healing per mana. Wild Growth's
+  comparison is per recipient. The periodic effects setting applies to both
+  ranks.
 
 More documents: CHANGELOG.txt, DESCRIPTION.txt, AUDIT.txt, CREDITS.txt
 World of Warcraft is a trademark of Blizzard Entertainment. This addon is not

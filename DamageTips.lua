@@ -52,7 +52,7 @@ local DEFAULTS = {
     showRange     = false,  -- "Damage: 59-65 (avg 62)"
     showDPC       = false,  -- "Damage per cast: x"
     schoolTint    = false,  -- tint the damage lines by spell school
-    showNextRank  = false,  -- "Next rank: DPS x (+y%)"
+    showNextRank  = false,  -- next-rank damage or healing comparison
     shiftDetails  = true,   -- hold Shift while hovering for the full breakdown
     showMinimap   = true,   -- minimap button (addon compartment always available)
     showMana      = true,   -- mana cost line
@@ -396,6 +396,15 @@ local function NextRankLineText(dps, nextDPS)
     return string_format("Next rank: DPS %s (%+.0f%%)",
         FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], nextDPS)),
         (nextDPS - dps) / dps * 100)
+end
+
+local function NextRankHealingLineText(metric, current, nextValue, precision, perRecipient)
+    if not FiniteNumber(current) or current <= 0 or not FiniteNumber(nextValue) or nextValue <= 0 then return end
+    local delta = (nextValue - current) / current * 100
+    if not FiniteNumber(delta) then return end
+    local scope = perRecipient and " (per recipient)" or ""
+    return string_format("Next rank: healing per %s%s %s (%+.0f%%)", metric, scope,
+        FormatNumber(string_format(precision, nextValue)), delta)
 end
 
 
@@ -791,9 +800,9 @@ end)
 ----------------------------------------------------------------------
 -- Entry computation
 ----------------------------------------------------------------------
--- Computes every number for a spell. `light` skips healing and next-rank
--- (used when computing the next rank itself, to avoid chaining).
-local function Compute(spellID, light, estimate, powerModel, source)
+-- A comparison probe never chains ranks or calculates healing throughput.
+-- Include healing totals only if the current tooltip needs that comparison.
+local function Compute(spellID, light, estimate, powerModel, source, readNextHealing)
     local text, secret, loaded = GetSpellText(spellID, source == PET_BOOK)
     local t = {}
     if not loaded or secret then RemoveParseEntry(spellID, source) end
@@ -815,10 +824,6 @@ local function Compute(spellID, light, estimate, powerModel, source)
         and DB.showExpectedThroughput and type(rule) ~= "number" or false
     t.powerModel = estimate and powerModel
     t.baselineDamage = DB.showDPS or DB.showDPM or DB.showDPC or DB.showRange or DB.showDPMana
-    if DB.showMana or DB.showDPMana or wantsSustain then
-        t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, wantsSustain)
-    end
-
     local parsed
     if loaded and not secret then
         parsed = ParsePublicText(spellID, source, text, powerModel, wantsExpected)
@@ -826,7 +831,9 @@ local function Compute(spellID, light, estimate, powerModel, source)
         parsed = {}
     end
     local damage, healing = parsed.damage, parsed.healing
-    t.healingPerRecipient = healing and parsed.effect and parsed.effect.perRecipient
+    t.healingPerRecipient = healing ~= nil and parsed.effect ~= nil and parsed.effect.perRecipient == true
+    local needsRecipientScope = powerModel and powerModel.periodic and powerModel.periodic.perRecipient
+    local readableHealingScope = not needsRecipientScope or t.healingPerRecipient
     if type(rule) == "number" then
         t.total, t.lo, t.hi = rule, rule, rule
     elseif damage and (t.baselineDamage or estimate) then
@@ -834,7 +841,7 @@ local function Compute(spellID, light, estimate, powerModel, source)
         t.total, t.lo, t.hi = damage.direct + t.dot, damage.low, damage.high
         t.school = damage.school
     end
-    if not light and (DB.showHealing or estimate) then
+    if readNextHealing or (not light and (DB.showHealing or estimate)) then
         t.absorb = parsed.absorb
         if healing then
             t.hot, t.hotDur = DB.includeDoT and healing.periodic or 0, DB.includeDoT and healing.duration or nil
@@ -842,8 +849,19 @@ local function Compute(spellID, light, estimate, powerModel, source)
         end
     end
 
+    local compareHealing = not light and DB.showNextRank and DB.showHealing
+        and (source == ACTION or source == BOOK)
+    if (compareHealing or readNextHealing) and readableHealingScope and FiniteNumber(t.htotal) and t.htotal > 0 then
+        t.comparableHealing = t.htotal
+    end
+    compareHealing = compareHealing and t.comparableHealing ~= nil
+    local checkFixedMana = wantsSustain or t.comparableHealing ~= nil
+    if DB.showMana or DB.showDPMana or checkFixedMana then
+        t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, checkFixedMana)
+    end
+
     local damageTiming = t.total and t.total > 0 and (t.baselineDamage or wantsSustain)
-    local healingTiming = t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
+    local healingTiming = not light and t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
     local effect = t.powerModel and DB.includeDoT and parsed.effect or nil
     if effect then
         t.tickTotal = (damage or healing).periodic
@@ -874,11 +892,23 @@ local function Compute(spellID, light, estimate, powerModel, source)
         end
     end
 
-    if not light and t.baselineDamage and DB.showNextRank and t.dps and t.dps > 0 then
+    local compareDamage = not light and DB.showNextRank and t.baselineDamage and t.dps and t.dps > 0
+    if compareDamage or compareHealing then
         local nextID = NextRankSpellID(spellID)
         if nextID then
-            local nt = Compute(nextID, true, false, nil, BOOK)
-            if nt and nt.dps then t.nextDPS = nt.dps end
+            local nextModel = compareHealing and Estimates.GetSpellModel(nextID)
+            local nextHealingModel = nextModel and nextModel.expected == "healing" and nextModel or nil
+            local nt = Compute(nextID, true, false, nextHealingModel, BOOK, compareHealing)
+            if compareDamage then
+                -- A modeled healing grammar can replace the generic parse.
+                -- Keep the old damage comparison when both are requested.
+                local damageRank = nextHealingModel and nextHealingModel.periodic
+                    and Compute(nextID, true, false, nil, BOOK) or nt
+                t.nextDPS = damageRank.dps
+            end
+            if compareHealing and nt.comparableHealing and t.healingPerRecipient == nt.healingPerRecipient then
+                t.nextHealing, t.nextHealingManaCost = nt.comparableHealing, nt.fixedManaCost
+            end
         end
     end
 
@@ -901,10 +931,17 @@ local function GetEntry(spellID, estimate, powerModel, source)
     if DB.showHealing and t.htotal and t.htotal > 0 then
         e.healLine = HealLineText(t.hps, t.healingPerRecipient)
         e.heffLine = HealEffLineText(t.htotal, t.cost, t.healingPerRecipient)
+        if t.nextHealing then
+            e.nextHealLine = NextRankHealingLineText("cast", t.htotal, t.nextHealing, "%.0f", t.healingPerRecipient)
+            if t.fixedManaCost and t.nextHealingManaCost then
+                e.nextHealManaLine = NextRankHealingLineText("mana", t.htotal / t.fixedManaCost,
+                    t.nextHealing / t.nextHealingManaCost, "%.2f", t.healingPerRecipient)
+            end
+        end
     end
     e.absorbLine = AbsorbLineText(t.absorb)
     e.detailLines = BuildDetailLines(t, e.dmgLine or e.dpcLine or e.rangeLine or e.effLine or e.nextLine,
-        e.healLine or e.heffLine, e.absorbLine)
+        e.healLine or e.heffLine or e.nextHealLine, e.absorbLine)
 
     if DB.showMana and t.cost and t.cost > 0 then
         local maxMana
@@ -1052,6 +1089,8 @@ AddSpellInfo = function(tooltip, spellID, source, nativeShow)
     if e.nextLine then AddStyledLine(tooltip, e.nextLine, dmgColor) added = true end
     if e.healLine then AddStyledLine(tooltip, e.healLine, DB.healColor) added = true end
     if e.heffLine then AddStyledLine(tooltip, e.heffLine, DB.healColor) added = true end
+    if e.nextHealLine then AddStyledLine(tooltip, e.nextHealLine, DB.healColor) added = true end
+    if e.nextHealManaLine then AddStyledLine(tooltip, e.nextHealManaLine, DB.healColor) added = true end
     if e.absorbLine then AddStyledLine(tooltip, e.absorbLine, DB.healColor) added = true end
     if e.manaLine then AddStyledLine(tooltip, e.manaLine, DB.manaColor) added = true end
     if estimateData and AddEstimateLines(tooltip, estimateData, dmgColor) then added = true end
