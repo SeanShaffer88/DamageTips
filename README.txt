@@ -29,9 +29,7 @@ its base cooldown and any damage-over-time duration.
 
 Built for World of Warcraft: Forever, Interface 16001. Build 70938 coverage
 is limited to ranks verified against client data. Local Lua mocks test model
-selection and estimate output. The earlier live smoke check used the 70888
-beta and covered druid healing and saved options. The 70938 estimates and
-combat taint behavior still need in-game verification.
+selection and estimate output.
 
 Installation
 ------------
