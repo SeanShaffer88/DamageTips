@@ -23,7 +23,7 @@ Click either screenshot to view it at full size.
 
 | Healing Touch | Wrath |
 | :---: | :---: |
-| [![Healing Touch spellbook tooltip with HPS, HPM, mana cost, and Expected HPS](../docs/screenshots/healing-touch.png)](../docs/screenshots/healing-touch.png?raw=true) | [![Wrath spellbook tooltip with DPS, DPM, mana cost, and equal-level PvE Expected DPS](../docs/screenshots/wrath.png)](../docs/screenshots/wrath.png?raw=true) |
+| [<img src="../docs/screenshots/healing-touch.png" alt="Healing Touch spellbook tooltip with HPS, HPM, mana cost, and Expected HPS" width="360">](../docs/screenshots/healing-touch.png?raw=true) | [<img src="../docs/screenshots/wrath.png" alt="Wrath spellbook tooltip with DPS, DPM, mana cost, and equal-level PvE Expected DPS" width="360">](../docs/screenshots/wrath.png?raw=true) |
 
 ## Compatibility
 
