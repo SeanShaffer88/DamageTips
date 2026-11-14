@@ -84,7 +84,7 @@ for _, id in ipairs(ranks) do
 end
 expect(not estimates.GetSpellModel(409810), "the spell that teaches Wild Growth has no model")
 local _, _, _, _, count = estimates.GetModelBuildStatus()
-expect(count == 212, "70938 includes the three additional ranks")
+expect(count == 215, "70938 includes the six additional Wild Growth and Riptide ranks")
 for _, unsupported in ipairs({ "70888", "70939" }) do
     build = unsupported
     for _, id in ipairs(ranks) do
