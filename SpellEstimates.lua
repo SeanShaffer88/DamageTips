@@ -306,8 +306,10 @@ local function ReadUnmodeled(text)
     text = RemoveMatched(text, first, last)
 
     local damage, heal
+    local isPeriodic = text:find("damage every ", 1, true) ~= nil or text:find("health every ", 1, true) ~= nil
     amount, duration, interval = ReadMissiles(text)
     if amount and interval and duration and duration % interval == 0 then
+        isPeriodic = true
         local total = amount * (duration / interval)
         if IsNonnegative(total) then damage = Components(nil, nil, total, duration, "arcane") end
     end
@@ -327,6 +329,7 @@ local function ReadUnmodeled(text)
         first, last, amount, duration, unit = text:find("heals the target for " .. INTEGER .. " over " .. DURATION)
     end
     if first then
+        isPeriodic = true
         local low, high
         if direct then low, high = ReadRange(direct) end
         local total, seconds = ReadInteger(amount), ReadDuration(duration, unit)
@@ -343,6 +346,7 @@ local function ReadUnmodeled(text)
         first, last, amount, durationAmount, unit = text:find("%f[%d,%.]" .. INTEGER .. " damage over " .. DURATION)
     end
     if first then
+        isPeriodic = true
         school = school and school:match("^(%a+) $")
         local total, seconds = ReadInteger(amount), ReadDuration(durationAmount, unit)
         if total and seconds then damage = Components(nil, nil, total, seconds, SCHOOL[school] and school) end
@@ -351,8 +355,6 @@ local function ReadUnmodeled(text)
 
     -- An explicit per-tick amount without a verified interval and duration
     -- cannot be treated as a hit or a full effect.
-    local isPeriodic = damage ~= nil or heal ~= nil or first ~= nil
-        or text:find("damage every ", 1, true) or text:find("health every ", 1, true)
     text = text:gsub("%f[%d,%.]" .. INTEGER .. " [%a ]-damage every ", "")
         :gsub("%f[%d,%.]" .. INTEGER .. " health every ", "")
         :gsub(MISSILES_PREFIX .. "each second for " .. DURATION .. "%.", "")
@@ -379,9 +381,6 @@ local function ReadUnmodeled(text)
     return damage, heal, absorb, isPeriodic
 end
 
--- Parses one public description into direct and periodic components. A
--- verified model supplies the same amounts to the base and expected lines
--- when its exact grammar fits; general text never borrows a model schedule.
 local function ReadExpectedDirect(kind, text, model, damage, healing)
     if kind == "landed" then return ReadBloodthirst(text, model) end
     local component, low, high
@@ -397,6 +396,8 @@ local function ReadExpectedDirect(kind, text, model, damage, healing)
     end
 end
 
+-- Parse one public description into direct and periodic components. Verified
+-- grammar supplies shared amounts, and generic text never borrows a schedule.
 function Estimates.ParseComponents(text, model, wantsExpected)
     local result = { status = "unsupported" }
     if locale ~= "enUS" and locale ~= "enGB" then return result end
