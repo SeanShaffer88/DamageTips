@@ -1,3 +1,18 @@
+1.6.2
+- Add Wild Growth ranks 1-3 to the power scaling and Expected HPS lines
+  on WoW Forever build 70938. Values apply to each recipient.
+- Restore healing lines for all three Riptide ranks on build 70938 and
+  add power scaling and Expected HPS for its periodic heal.
+- Add healing-power scaling and baseline Expected HPS on build 70938
+  for Holy Light ranks 1-9, Flash of Light ranks 1-6, and Lesser Healing
+  Wave ranks 1-6.
+- Compare the next readable healing rank by healing per cast and per mana.
+  Wild Growth comparisons report values per recipient.
+- Refresh open stock spellbook tooltips on build 70938 when Shift, the
+  target, or spell data changes. Defer refresh during combat lockdown.
+- Add a source repository tool for checking periodic and direct healing
+  models against local Forever 70938 combat logs.
+
 1.6.1
 - Restore DamageTips lines when WoW rebuilds an action-bar or spellbook
   tooltip, with one set of lines per rebuild.
