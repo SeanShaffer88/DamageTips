@@ -55,4 +55,4 @@ DamageTips parses spell amounts from English descriptions. On other locales, inf
 - Settings imports are validated before they apply. Imports and resets update the minimap button immediately.
 - Build 70938 gains power scaling and expected output for supported spell ranks.
 
-[Full manual](../README.txt) · [Changelog](../CHANGELOG.txt) · [Credits](../CREDITS.txt) · [License (GPL-3.0-or-later)](../LICENSE.txt) · [Report an issue](https://github.com/SeanShaffer88/DamageTips/issues)
+[Full manual](../README.txt) · [Changelog](../CHANGELOG.txt) · [Credits](../CREDITS.txt) · [License (GPL-3.0-or-later)](../LICENSE.txt) · [Report an issue](https://github.com/SeanShaffer88/DamageTips/issues/new?template=bug_report.yml)
