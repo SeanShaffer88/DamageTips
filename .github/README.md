@@ -21,9 +21,24 @@ DamageTips adds DPS, HPS, absorb amounts, and mana costs to action bar and spell
 
 Click either screenshot to view it at full size.
 
-| Healing Touch | Wrath |
-| :---: | :---: |
-| [<img src="../docs/screenshots/healing-touch.png" alt="Healing Touch spellbook tooltip with HPS, HPM, mana cost, and Expected HPS" width="360">](../docs/screenshots/healing-touch.png?raw=true) | [<img src="../docs/screenshots/wrath.png" alt="Wrath spellbook tooltip with DPS, DPM, mana cost, and equal-level PvE Expected DPS" width="360">](../docs/screenshots/wrath.png?raw=true) |
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Healing Touch</th>
+      <th scope="col">Wrath</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center" valign="top">
+        <a href="../docs/screenshots/healing-touch.png?raw=true"><img src="../docs/screenshots/healing-touch.png" alt="Healing Touch spellbook tooltip with HPS, HPM, mana cost, and Expected HPS" width="360"></a>
+      </td>
+      <td align="center" valign="top">
+        <a href="../docs/screenshots/wrath.png?raw=true"><img src="../docs/screenshots/wrath.png" alt="Wrath spellbook tooltip with DPS, DPM, mana cost, and equal-level PvE Expected DPS" width="360"></a>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 ## Compatibility
 
