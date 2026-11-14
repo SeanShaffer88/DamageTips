@@ -1,4 +1,8 @@
 Unreleased
+- Use the same spell description parsing for basic and expected output.
+  Disabling periodic effects keeps the direct part of mixed spells.
+- Recover from failed spell-data requests and refresh only matching
+  tooltips. Compare ranks using documented spellbook slot ranges.
 - Enable individually verified spell models on WoW Forever 1.60.1.70938.
   Preserve build 70888 support and disable models on unverified builds.
 - Add /dtips status to show the detected client, verified model count and

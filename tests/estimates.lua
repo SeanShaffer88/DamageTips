@@ -16,6 +16,22 @@ local healText = "Restores 160 health."
 local description, dataOverride = damageText, nil
 local knownCalls, regenCalls, costCalls, critCalls, requests = 0, 0, 0, 0, 0
 local assertions = 0
+local timers = {}
+Enum = { TooltipDataLineType = { SpellDescription = 34 } }
+
+C_Timer = {
+    After = function(delay, callback)
+        timers[#timers + 1] = { due = now + delay, callback = callback }
+    end,
+}
+
+local function runReadyTimers()
+    local queued = timers
+    timers = {}
+    for _, timer in ipairs(queued) do
+        if timer.due <= now then timer.callback() else timers[#timers + 1] = timer end
+    end
+end
 
 function print(message) chat[#chat + 1] = tostring(message) end
 function issecretvalue(value) return rawequal(value, secret) end
@@ -79,7 +95,7 @@ C_SpellBook = {
 C_TooltipInfo = {
     GetSpellByID = function()
         if dataOverride then return dataOverride end
-        return { lines = { { leftText = "Test Spell" }, { leftText = description } } }
+        return { lines = { { leftText = "Test Spell" }, { type = 34, leftText = description } } }
     end,
 }
 
@@ -229,7 +245,8 @@ hover()
 expect(hasNoEstimates() and not has("DPS"), "restricted description invalidates estimate in same second")
 description, dataOverride = damageText, secret
 hover()
-expect(hasNoEstimates(), "restricted tooltip table is not inspected")
+expect(has("DPS: 50.0") and has("Caster spell crit"),
+    "a public spell description does not need the restricted fallback")
 dataOverride = nil
 castTime = secret
 hover()
@@ -340,7 +357,8 @@ spellID, description, mana = 999, nil, 180
 hover()
 expect(requests == 1 and hasNoEstimates(), "missing spell text requests data and skips estimates")
 description = damageText
-fireEvent("SPELL_DATA_LOAD_RESULT", spellID)
+fireEvent("SPELL_DATA_LOAD_RESULT", spellID, true)
+runReadyTimers()
 expect(has("Mana sustain") and has("Caster spell crit"), "async loaded tooltip preserves player context")
 
 for _, line in ipairs(chat) do expect(not line:find("error (shown once)", 1, true), "no guarded hook errors") end
@@ -441,7 +459,7 @@ GetSpellHitModifier = originalHitModifier
 
 description = "Blasts the enemy for 180 Fire damage every 2 sec."
 hover()
-expect(has("DPS: 90.0") and not has("Expected DPS"), "periodic damage phrasing cannot use expected direct spell model")
+expect(not has("DPS:") and not has("Expected DPS"), "an isolated periodic tick with no total duration is not a direct hit")
 description = fireBlast .. " Then burns for 60 Fire damage over 6 sec."
 command("import DT1;includeDoT=0")
 hover()
@@ -661,8 +679,13 @@ expect(has("+100 ranged attack power: +5 damage / tick (+25 over 5 ticks)") and 
 periodicHover(8921, moonfire)
 command("import DT1;includeDoT=0")
 hover()
-expect(lacksPeriodic() and has("+15 damage / cast") and has("DPS: 50.0"),
-    "Include DoT off keeps legacy direct damage and independent nominal direct scaling")
+expect(has("Expected DPS (equal-level PvE): 53.9") and not has(" / tick (")
+    and has("+15 damage / cast") and has("DPS: 50.0"),
+    "Include DoT off preserves direct damage, scaling and expected DPS")
+periodicHover(8936, "Heals a friendly target for 90 to 110 and another 110 over 21 sec.")
+expect(has("HPS: 50.0") and has("Expected HPS: 55.0")
+    and has("+28.6 healing / cast") and not has(" / tick ("),
+    "periodic off preserves the direct Regrowth heal, scaling and expected HPS")
 periodicHover(172, corruption)
 expect(lacksPeriodic() and not has("DPS"), "Include DoT off hides pure periodic lines")
 command("import DT1;includeDoT=1")
@@ -726,7 +749,7 @@ local targetExists, targetAttackable, targetIsPlayer, targetPlayerControlled, ta
 local livePlayerLevel, liveTargetLevel, resist, effectiveArmor, armorEffect = 60, 62, 70, 1000, 0.25
 local targetReads, resistReads, armorReads, fallbackLevels, armorEffectReads = 0, 0, 0, 0, 0
 local lastSchool
-Enum = { Damageclass = { Fire = 41, Frost = 42, Nature = 43, Shadow = 44, Arcane = 45, Holy = 46 } }
+Enum.Damageclass = { Fire = 41, Frost = 42, Nature = 43, Shadow = 44, Arcane = 45, Holy = 46 }
 
 function UnitExists(unit)
     assert(unit == "target")
@@ -1203,6 +1226,29 @@ buildNumber = "70888"
 for id, model in pairs(namespace.SpellPowerModels) do
     expect(estimates.GetSpellModel(id) == model, "70888 retains its original model for ID " .. id)
 end
+
+-- Only typed spell-description rows may stand in for an empty description.
+spellID, description, dataOverride = 2136, "", { lines = {
+    { type = 13, leftText = "Blasts the target for 999 Fire damage." },
+    { type = 34, leftText = fireBlast },
+} }
+now = now + 2
+hover()
+expect(has("DPS: 50.0") and has("Expected DPS"), "typed fallback ignores title and reads spell description")
+dataOverride = { lines = {
+    { type = 13, leftText = "Blasts the target for 999 Fire damage." },
+    { type = 0, leftText = "Instant cast and 100 Mana" },
+} }
+now = now + 2
+hover()
+expect(not has("DPS:") and not has("Expected DPS"), "name and cost rows are not spell descriptions")
+dataOverride = { lines = {
+    { type = 34, leftText = fireBlast },
+    { type = 34, leftText = secret },
+} }
+now = now + 2
+hover()
+expect(not has("DPS:") and not has("Expected DPS"), "partly secret fallback does not parse a partial spell")
 
 realPrint(string.format("DamageTips Forever estimate mocks passed (%d assertions, including %d prior, %d alpha.3, %d alpha.2 and %d original).",
     assertions, alpha4Assertions, alpha3Assertions, alpha2Assertions, previousAssertions))

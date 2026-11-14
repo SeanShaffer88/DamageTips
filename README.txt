@@ -58,7 +58,7 @@ between sessions.
                  per-mana lines, mana cost, school tint, Shift breakdown;
                  show on action bars / spellbook, mana sustain, caster stats,
                  spell and attack power scaling, expected DPS and HPS
-  Calculation    Include damage over time, GCD minimum, thousands separators,
+  Calculation    Include periodic effects, GCD minimum, thousands separators,
                  next-rank comparison, DPS decimals, mana cost format
   Format         Colours (damage / healing / mana), font outline, font size,
                  live preview of every line
@@ -150,9 +150,10 @@ Notes
   A damage aura needs one successful application. Each Arcane Missiles
   missile rolls hit independently. The model applies 1.5x crit only to
   eligible components and assumes healing lands. Mind Flay represents
-  the base channel before any talent ramp. Include damage over time also
-  controls these periodic lines. Mixed spells can still show their direct
-  power scaling with that option off.
+  the base channel before any talent ramp. Include periodic effects also
+  controls these periodic lines. Mixed spells keep their direct amounts,
+  scaling and expected output when periodic effects are excluded. Each
+  rate still needs readable timing.
 * Mana sustain uses current mana, the spell's up-front cost, and casting
   mana regeneration. It pays the first cast from your current pool and
   applies steady regeneration between casts. Cadence follows the tooltip's
@@ -164,14 +165,18 @@ Notes
 * Caster spell stats show character spell crit, spell power for a recognized
   damage school, and bonus healing for a healing spell when available. They
   describe the caster and leave the tooltip's damage and healing math intact.
-* Forever follows Midnight's "secret value" rules. DamageTips reads spell text
-  from the game's tooltip data and skips anything the game marks as secret, so
-  a spell may occasionally show no damage line while data is restricted.
-* Damage values are read from the spell's description text, so this currently
-  works on English clients only.
+* Forever follows Midnight's "secret value" rules. DamageTips reads the
+  public spell description, or typed spell-description lines from the
+  tooltip when needed. Restricted descriptions are skipped.
+* Spell amounts are parsed on English clients only. On other locales,
+  API-backed information such as mana cost can still appear. The old
+  DamageTipsPatterns global is no longer used.
 * The basic DPS line requires a damage amount or range in the spell text.
-* Spell data that the client has not loaded yet is requested once. The
-  lines appear when the data arrives or on the next tooltip refresh.
+* Missing spell data is requested with bounded retries. A matching tooltip
+  with no DamageTips lines can update when the text arrives. If it already
+  has lines, the next native refresh adds the newly available information.
+* Next-rank comparisons use readable ranked spells from the player spellbook.
+  The current spell must match an indexed rank before a comparison is shown.
 
 More documents: CHANGELOG.txt, DESCRIPTION.txt, AUDIT.txt, CREDITS.txt
 World of Warcraft is a trademark of Blizzard Entertainment. This addon is not

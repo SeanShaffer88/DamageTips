@@ -33,7 +33,6 @@ local IsSecret = issecretvalue or function() return false end
 ----------------------------------------------------------------------
 -- Constants
 ----------------------------------------------------------------------
-local GCD_FALLBACK = 1.5 -- used only when the spell reports no GCD of its own
 local CACHE_TTL = 1.0    -- seconds a computed result is reused while hovering
 local FONT_MIN, FONT_MAX = 8, 20
 local MANA = (Enum and Enum.PowerType and Enum.PowerType.Mana) or 0
@@ -306,8 +305,8 @@ local function AbsorbLineText(absorb)
 end
 
 local function NextRankLineText(dps, nextDPS)
-    if not DB.showNextRank or not dps or dps <= 0 or not nextDPS or nextDPS <= dps then return false end
-    return string_format("Next rank: DPS %s (+%.0f%%)",
+    if not DB.showNextRank or not dps or dps <= 0 or not nextDPS then return false end
+    return string_format("Next rank: DPS %s (%+.0f%%)",
         FormatNumber(string_format(DPS_FORMATS[DB.dpsDecimals], nextDPS)),
         (nextDPS - dps) / dps * 100)
 end
@@ -361,111 +360,73 @@ end
 ----------------------------------------------------------------------
 -- Spell data (Mainline API only; every value guarded against secrets)
 ----------------------------------------------------------------------
+
+local function ReadMilliseconds(value)
+    if IsSecret(value) or type(value) ~= "number" or value < 0 or value >= math.huge or value ~= value then
+        return nil
+    end
+    return value / 1000
+end
+
 local function GetCastTime(spellID)
-    if not (C_Spell and C_Spell.GetSpellInfo) then return 0 end
+    if not (C_Spell and C_Spell.GetSpellInfo) then return nil end
     local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
-    if not ok or IsSecret(info) or type(info) ~= "table" then return 0 end
-    local ms = info.castTime
-    if IsSecret(ms) or type(ms) ~= "number" then return 0 end
-    return ms / 1000, ms >= 0 and ms < math.huge
+    if not ok or IsSecret(info) or type(info) ~= "table" then return nil end
+    return ReadMilliseconds(info.castTime)
 end
 
--- Returns base cooldown and the spell's own GCD, in seconds.
 local function GetBaseTimings(spellID)
-    if not GetSpellBaseCooldown then return 0, GCD_FALLBACK end
+    if not GetSpellBaseCooldown then return nil end
     local ok, cdMS, gcdMS = pcall(GetSpellBaseCooldown, spellID)
-    if not ok then return 0, GCD_FALLBACK end
-    local cd, gcd = 0, GCD_FALLBACK
-    local cdReadable = not IsSecret(cdMS) and type(cdMS) == "number"
-    local gcdReadable = not IsSecret(gcdMS) and type(gcdMS) == "number"
-    if cdReadable then cd = cdMS / 1000 end
-    if gcdReadable and gcdMS > 0 then gcd = gcdMS / 1000 end
-    return cd, gcd, cdReadable and gcdReadable and cdMS >= 0 and cdMS < math.huge
-        and gcdMS >= 0 and gcdMS < math.huge
+    if not ok then return nil end
+    return ReadMilliseconds(cdMS), ReadMilliseconds(gcdMS)
 end
 
--- Spell text comes from tooltip data, never from FontString:GetText()
--- (always secret). Returns text, wasSecret, descriptionLoaded.
--- descriptionLoaded is false when only the name line (or nothing) came back,
--- which means the client has not loaded the spell data yet.
-local parts = {} -- scratch table, reused
-local function GetSpellText(spellID)
-    local n, secret = 0, false
+-- Use a public description, or the client's explicitly typed description
+-- lines, before considering a load request. Never parse titles, cast/cost
+-- lines, or FontString:GetText().
+local SPELL_DESCRIPTION = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.SpellDescription
+local function GetSpellText(spellID, isPet)
+    if C_Spell and C_Spell.GetSpellDescription then
+        local ok, desc = pcall(C_Spell.GetSpellDescription, spellID)
+        if ok then
+            if IsSecret(desc) then return "", true, false end
+            if type(desc) == "string" and desc:find("%S") then return desc, false, true end
+        end
+    end
+    if not (SPELL_DESCRIPTION and C_TooltipInfo and C_TooltipInfo.GetSpellByID) then return "", false, false end
+    local ok, data = pcall(C_TooltipInfo.GetSpellByID, spellID, isPet)
+    if not ok then return "", false, false end
+    if IsSecret(data) then return "", true, false end
+    if type(data) ~= "table" then return "", false, false end
 
-    if C_TooltipInfo and C_TooltipInfo.GetSpellByID then
-        local data = C_TooltipInfo.GetSpellByID(spellID)
-        if IsSecret(data) then
-            secret = true
-        elseif type(data) == "table" then
-            local lines = data.lines
-            if IsSecret(lines) then
-                secret = true
-            elseif type(lines) == "table" then
-                for i = 1, #lines do
-                    local line = lines[i]
-                    if IsSecret(line) then
-                        secret = true
-                    elseif type(line) == "table" then
-                        local t = line.leftText
-                        if IsSecret(t) then
-                            secret = true
-                        elseif type(t) == "string" then
-                            n = n + 1
-                            parts[n] = t
-                        end
-                    end
+    local lines = data.lines
+    if IsSecret(lines) then return "", true, false end
+    if type(lines) ~= "table" then return "", false, false end
+    local parts
+    for i = 1, #lines do
+        local line = lines[i]
+        if IsSecret(line) then return "", true, false end
+        if type(line) == "table" then
+            local kind = line.type
+            if IsSecret(kind) then return "", true, false end
+            if kind == SPELL_DESCRIPTION then
+                local value = line.leftText
+                if IsSecret(value) then return "", true, false end
+                if type(value) == "string" and value:find("%S") then
+                    parts = parts or {}
+                    parts[#parts + 1] = value
                 end
             end
         end
     end
-
-    local loaded = n >= 2
-    if not loaded and C_Spell and C_Spell.GetSpellDescription then
-        local desc = C_Spell.GetSpellDescription(spellID)
-        if IsSecret(desc) then
-            secret = true
-        elseif type(desc) == "string" and desc ~= "" then
-            n = n + 1
-            parts[n] = desc
-            loaded = true
-        end
-    end
-
-    local text = table_concat(parts, " ", 1, n)
-    wipe(parts)
-    return text, secret, loaded
+    if parts then return table_concat(parts, " "), false, true end
+    return "", false, false
 end
 
 local function GetTooltipFontPath()
     return (GameTooltipText and GameTooltipText:GetFont()) or STANDARD_TEXT_FONT
 end
-
-----------------------------------------------------------------------
--- Damage & healing parsing (English patterns shipped; see PATTERNS)
-----------------------------------------------------------------------
--- Pattern sets keyed by client locale. A translation file can register its
--- own set before this file loads: DamageTipsPatterns["deDE"] = { ... }.
--- Only the active locale's set is used; unmatched locales fall back to enUS.
-local PATTERNS = {
-    enUS = {
-        dot       = "(%d+) [%a ]-damage over (%d+) sec",
-        range     = "(%d+) to (%d+) (%a[%a ]-)damage",
-        flat      = "for (%d+) (%a[%a ]-)damage",
-        absorb    = "absorbs? (%d+) damage",
-        hot       = "(%d+) health over (%d+) sec",
-        hotAlt    = "for (%d+) over (%d+) sec",
-        renew     = "[Hh]eals the target of ([%d,]+) damage over (%d+) sec%a*%.",
-        healRange = "(%d+) to (%d+) health",
-        healFlat  = "for (%d+) health",
-        healFlat2 = "restores (%d+) health",
-    },
-}
-if type(_G.DamageTipsPatterns) == "table" then
-    for loc, pack in pairs(_G.DamageTipsPatterns) do
-        if type(pack) == "table" then PATTERNS[loc] = pack end
-    end
-end
-local P = PATTERNS[(GetLocale and GetLocale()) or "enUS"] or PATTERNS.enUS
 
 local SCHOOL_COLORS = {
     frost = { 0.62, 0.8, 1 }, fire = { 1, 0.5, 0.25 }, shadow = { 0.6, 0.45, 0.9 },
@@ -473,173 +434,186 @@ local SCHOOL_COLORS = {
     physical = { 1, 1, 1 },
 }
 
-local function CleanSchool(s)
-    if type(s) ~= "string" then return nil end
-    s = s:gsub("%s+", "")
-    if SCHOOL_COLORS[s] then return s end
-    return nil
-end
-
--- Returns direct, dot, dotDuration, rangeLo, rangeHi, school.
-local function ParseDamage(text)
-    local direct, dot, dotDuration, lo, hi, school = 0, 0, nil, nil, nil, nil
-    text = text:lower():gsub("(%d),(%d)", "%1%2") -- "1,234" -> "1234"
-
-    local dotAmount, dur = text:match(P.dot)
-    if dotAmount then
-        dot, dotDuration = tonumber(dotAmount), tonumber(dur)
-        text = text:gsub(P.dot, "")
-    end
-
-    local a, b, s = text:match(P.range)
-    if a then
-        lo, hi = tonumber(a), tonumber(b)
-        direct = (lo + hi) / 2
-        school = CleanSchool(s)
-    else
-        local flat, fs = text:match(P.flat)
-        if flat then
-            direct = tonumber(flat)
-            lo, hi = direct, direct
-            school = CleanSchool(fs)
-        end
-    end
-
-    return direct, dot, dotDuration, lo, hi, school
-end
-
--- Healing text; the caller removes the damage-over-time text first so a DoT
--- is never mistaken for a heal-over-time.
--- Returns hDirect(avg), hLo, hHi, hot, hotDuration, absorb.
-local function ParseHealing(text)
-    local hDirect, hLo, hHi, hot, hotDur, absorb = 0, nil, nil, 0, nil, nil
-    text = text:lower():gsub("(%d),(%d)", "%1%2")
-
-    local ab = text:match(P.absorb)
-    if ab then
-        absorb = tonumber(ab)
-        text = text:gsub(P.absorb, "")
-    end
-
-    local hotAmount, hd = text:match(P.hot)
-    if not hotAmount then hotAmount, hd = text:match(P.hotAlt) end
-    if hotAmount then
-        hot, hotDur = tonumber(hotAmount), tonumber(hd)
-        text = text:gsub(P.hot, ""):gsub(P.hotAlt, "")
-    end
-
-    local a, b = text:match(P.healRange)
-    if a then
-        hLo, hHi = tonumber(a), tonumber(b)
-        hDirect = (hLo + hHi) / 2
-        text = text:gsub(P.healRange, "")
-    else
-        local flat = text:match(P.healFlat) or text:match(P.healFlat2)
-        if flat then
-            hDirect = tonumber(flat)
-            hLo, hHi = hDirect, hDirect
-        end
-    end
-
-    return hDirect, hLo, hHi, hot, hotDur, absorb
-end
-
+------------------------------------------------------------------------ Spell rank index (spellbook scan; rebuilt when the spellbook changes)
 ----------------------------------------------------------------------
--- Spell rank index (spellbook scan; rebuilt when the spellbook changes)
-----------------------------------------------------------------------
-local rankIndex, rankIndexDirty = {}, true
+local nextRanks, rankIndexDirty = {}, true
+
+local function IsWholeNumber(value, minimum)
+    return not IsSecret(value) and type(value) == "number" and value >= minimum
+        and value < math.huge and value == math_floor(value)
+end
 
 local function RebuildRankIndex()
-    rankIndex, rankIndexDirty = {}, false
-    if not (C_SpellBook and C_SpellBook.GetSpellBookItemInfo) then return end
-    local trailing = 0
-    for slot = 1, 2000 do
-        local info = C_SpellBook.GetSpellBookItemInfo(slot, BANK_PLAYER)
-        if info and type(info.name) == "string" and not IsSecret(info.name) then
-            trailing = 0
-            local r = type(info.subName) == "string" and info.subName:match("^Rank (%d+)$") or nil
-            r = tonumber(r) or 0
-            local list = rankIndex[info.name]
-            if not list then list = {}; rankIndex[info.name] = list end
-            local id = info.spellID or info.actionID
-            if type(id) == "number" and not IsSecret(id) then
-                list[#list + 1] = { rank = r, id = id }
+    local spellType = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell
+    if not spellType or not (C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines
+        and C_SpellBook.GetSpellBookSkillLineInfo and C_SpellBook.GetSpellBookItemInfo) then return end
+
+    local count = C_SpellBook.GetNumSpellBookSkillLines()
+    if not IsWholeNumber(count, 0) then return end
+    local matches, seen = {}, {}
+    for line = 1, count do
+        local skill = C_SpellBook.GetSpellBookSkillLineInfo(line)
+        if not IsSecret(skill) and type(skill) == "table" then
+            local offset, size = skill.itemIndexOffset, skill.numSpellBookItems
+            if IsWholeNumber(offset, 0) and IsWholeNumber(size, 0) then
+                local names = {}
+                for slot = offset + 1, offset + size do
+                    local info = C_SpellBook.GetSpellBookItemInfo(slot, BANK_PLAYER)
+                    if not IsSecret(info) and type(info) == "table" then
+                        local kind, id, name, subName = info.itemType, info.spellID, info.name, info.subName
+                        local offSpec, passive = info.isOffSpec, info.isPassive
+                        if not IsSecret(kind) and kind == spellType
+                            and not IsSecret(offSpec) and offSpec ~= true
+                            and not IsSecret(passive) and passive ~= true
+                            and not IsSecret(name) and type(name) == "string" and name ~= "" then
+                            local group = names[name]
+                            if not group then
+                                group = { byRank = {}, byID = {} }
+                                names[name] = group
+                            end
+                            local ranks, ids = group.byRank, group.byID
+                            local rank = not IsSecret(subName) and type(subName) == "string"
+                                and tonumber(subName:match("^Rank (%d+)$"))
+                            if IsWholeNumber(rank, 1) and IsWholeNumber(id, 1) then
+                                if ids[id] and ids[id] ~= rank then group.incomplete = true end
+                                ids[id] = rank
+                                if ranks[rank] == nil then ranks[rank] = id
+                                elseif ranks[rank] ~= id then ranks[rank] = false end
+                            else
+                                -- An unreadable or unranked entry could belong to this group.
+                                group.incomplete = true
+                            end
+                        end
+                    end
+                end
+                for _, group in pairs(names) do
+                    if not group.incomplete then
+                        local ranks = group.byRank
+                        for rank, id in pairs(ranks) do
+                            if id then
+                                -- Require the immediate next rank in the same skill line.
+                                local nextID = ranks[rank + 1] or false
+                                if seen[id] and matches[id] ~= nextID then nextID = false end
+                                matches[id], seen[id] = nextID, true
+                            end
+                        end
+                    end
+                end
             end
-        else
-            trailing = trailing + 1
-            if trailing > 40 then break end
         end
     end
-    for _, list in pairs(rankIndex) do
-        table_sort(list, function(a, b) return a.rank < b.rank end)
-    end
+    nextRanks, rankIndexDirty = matches, false
 end
 
 local function NextRankSpellID(spellID)
+    if not IsWholeNumber(spellID, 1) then return nil end
     if rankIndexDirty then RebuildRankIndex() end
-    local name
-    if C_Spell and C_Spell.GetSpellInfo then
-        local info = C_Spell.GetSpellInfo(spellID)
-        name = info and info.name
-    end
-    if type(name) ~= "string" or IsSecret(name) then return nil end
-    local list = rankIndex[name]
-    if not list or #list < 2 then return nil end
-    local myRank = -1
-    for _, e in ipairs(list) do
-        if e.id == spellID then myRank = e.rank break end
-    end
-    local best
-    for _, e in ipairs(list) do
-        if e.rank > myRank and (not best or e.rank < best.rank) then best = e end
-    end
-    return best and best.id or nil
+    if not rankIndexDirty then return nextRanks[spellID] or nil end
 end
 
 ----------------------------------------------------------------------
 -- Async spell data (SPELL_DATA_LOAD_RESULT)
 ----------------------------------------------------------------------
-local cur = { added = false } -- spell ID, owner and source of the active tooltip
-local AddSpellInfo -- forward declaration
+local cur = { generation = 0, added = false }
+local AddSpellInfo, ResolveTooltipSpell -- defined in the hook section
 
-local requestedOnce = {} -- spells we already asked the server about
-local pending = {}       -- requests awaiting SPELL_DATA_LOAD_RESULT
+local function ClearTooltipContext()
+    cur.generation = cur.generation + 1
+    cur.spellID, cur.owner, cur.kind, cur.slot, cur.arg, cur.source = nil, nil, nil, nil, nil, nil
+    cur.added = false
+end
+
+local errorShown = false
+local function RunTooltipHandler(handler, ...)
+    local ok, err = pcall(handler, ...)
+    if not ok and not errorShown then
+        errorShown = true
+        Print("error (shown once): " .. tostring(err))
+    end
+end
+
+local REQUEST_TIMEOUT, MAX_REQUEST_ATTEMPTS = 5, 3
+local requests = {} -- per-spell attempt budget and retry deadline
+local pending = {}  -- exact attempt awaiting SPELL_DATA_LOAD_RESULT
 local waiting = 0
 local dataFrame = CreateFrame("Frame")
+local queuedGeneration
 
--- Returns true if a new request was issued.
+local function RefreshTooltip(generation, spellID)
+    if queuedGeneration == generation then queuedGeneration = nil end
+    if generation ~= cur.generation or not DB or cur.added or not GameTooltip:IsShown()
+        or (GameTooltip.IsForbidden and GameTooltip:IsForbidden()) then return end
+    local owner = GameTooltip:GetOwner()
+    if IsSecret(owner) or owner ~= cur.owner then return end
+    local currentID, source = ResolveTooltipSpell(cur.kind, cur.slot, cur.arg)
+    if currentID == spellID and source == cur.source then
+        AddSpellInfo(GameTooltip, spellID, source)
+    end
+end
+
+local function QueueTooltipRefresh(spellID)
+    local generation = cur.generation
+    if cur.spellID ~= spellID or cur.added or queuedGeneration == generation
+        or not (C_Timer and C_Timer.After) then return end
+    queuedGeneration = generation
+    -- The event may fire inside the setter post-hook or the load call.
+    C_Timer.After(0, function() RunTooltipHandler(RefreshTooltip, generation, spellID) end)
+end
+
+local function InvalidateSpellText(spellID)
+    rankIndexDirty = true
+    if not DB then return end
+    if DB.showNextRank or not IsWholeNumber(spellID, 1) then
+        -- A newly readable higher rank can change a different spell's display.
+        for _, e in pairs(cache) do e.stamp = -math.huge end
+    elseif IsWholeNumber(spellID, 1) then
+        local e = cache[spellID]
+        if e then e.stamp = -math.huge end
+    end
+end
+
+local function FinishSpellRequest(spellID, attempt, success)
+    if pending[spellID] ~= attempt then return end
+    pending[spellID] = nil
+    waiting = waiting - 1
+    if waiting == 0 then dataFrame:UnregisterEvent("SPELL_DATA_LOAD_RESULT") end
+    attempt.retryAt = GetTime() + 2 ^ (attempt.count - 1)
+    if success then
+        InvalidateSpellText(spellID)
+        QueueTooltipRefresh(spellID)
+    end
+end
+
+-- Retries occur only on later hovers, with a bounded budget for each spell.
 local function RequestSpellData(spellID)
-    if requestedOnce[spellID] or not (C_Spell and C_Spell.RequestLoadSpellData) then return false end
-    requestedOnce[spellID] = true
-    pending[spellID] = true
+    if not IsWholeNumber(spellID, 1) or not (C_Spell and C_Spell.RequestLoadSpellData
+        and C_Timer and C_Timer.After) or pending[spellID] then return false end
+    local last = requests[spellID]
+    if last and (last.count >= MAX_REQUEST_ATTEMPTS or GetTime() < last.retryAt) then
+        return false
+    end
+    local attempt = { count = last and last.count + 1 or 1 }
+    requests[spellID], pending[spellID] = attempt, attempt
     waiting = waiting + 1
-    dataFrame:RegisterEvent("SPELL_DATA_LOAD_RESULT")
-    pcall(C_Spell.RequestLoadSpellData, spellID)
+    if waiting == 1 then dataFrame:RegisterEvent("SPELL_DATA_LOAD_RESULT") end
+    C_Timer.After(REQUEST_TIMEOUT, function() FinishSpellRequest(spellID, attempt, false) end)
+    local ok, result = pcall(C_Spell.RequestLoadSpellData, spellID)
+    if not ok or IsSecret(result) or result == false then FinishSpellRequest(spellID, attempt, false) end
     return true
 end
 
-dataFrame:RegisterEvent("SPELLS_CHANGED") -- rank index + cache go stale
-dataFrame:SetScript("OnEvent", function(self, event, spellID)
+dataFrame:RegisterEvent("SPELLS_CHANGED")
+dataFrame:RegisterEvent("SPELL_TEXT_UPDATE")
+dataFrame:SetScript("OnEvent", function(_, event, spellID, success)
     if event == "SPELLS_CHANGED" then
         rankIndexDirty = true
         if DB then InvalidateCache() end
-        return
-    end
-    if not pending[spellID] then return end
-    pending[spellID] = nil
-    waiting = waiting - 1
-    if waiting <= 0 then
-        waiting = 0
-        self:UnregisterEvent("SPELL_DATA_LOAD_RESULT") -- nothing left to wait for
-    end
-
-    local e = cache[spellID]
-    if e then e.stamp = 0 end -- force a recompute with the loaded data
-
-    -- Tooltip still showing this spell without our lines: append them now.
-    if cur.spellID == spellID and not cur.added
-        and GameTooltip:IsShown() and GameTooltip:GetOwner() == cur.owner then
-        pcall(AddSpellInfo, GameTooltip, spellID, cur.source)
+    elseif event == "SPELL_TEXT_UPDATE" then
+        InvalidateSpellText(spellID)
+        if IsWholeNumber(spellID, 1) then QueueTooltipRefresh(spellID) end
+    elseif IsWholeNumber(spellID, 1) then
+        local attempt = pending[spellID]
+        if attempt then FinishSpellRequest(spellID, attempt, not IsSecret(success) and success == true) end
     end
 end)
 
@@ -648,8 +622,8 @@ end)
 ----------------------------------------------------------------------
 -- Computes every number for a spell. `light` skips healing and next-rank
 -- (used when computing the next rank itself, to avoid chaining).
-local function Compute(spellID, light, estimate, powerModel)
-    local text, secret, loaded = GetSpellText(spellID)
+local function Compute(spellID, light, estimate, powerModel, isPet)
+    local text, secret, loaded = GetSpellText(spellID, isPet)
     local t = { secret = secret, loaded = loaded }
     if not loaded and not secret then
         t.requested = RequestSpellData(spellID)
@@ -666,75 +640,58 @@ local function Compute(spellID, light, estimate, powerModel)
     local wantsSustain = estimate and DB.showManaSustain
     local wantsExpected = estimate and powerModel and powerModel.expected
         and DB.showExpectedThroughput and type(rule) ~= "number"
-    local hasPeriodicOutput = false
     t.powerModel = estimate and powerModel
-    local effect = t.powerModel and t.powerModel.periodic
-    local legacyText = text
-    if P.renew then
-        legacyText = text:gsub(P.renew, "heals the target for %1 health over %2 sec.")
-    end
     t.baselineDamage = DB.showDPS or DB.showDPM or DB.showDPC or DB.showRange or DB.showDPMana
     if DB.showMana or DB.showDPMana or wantsSustain then
         t.cost, t.fixedManaCost = Estimates.GetManaCost(spellID, wantsSustain)
     end
 
-    if text ~= "" and (t.baselineDamage or estimate) then
-        local direct, dot, dotDur, lo, hi, school
-        if type(rule) == "number" then
-            direct, lo, hi, school = rule, rule, rule, nil
-            dot, dotDur = 0, nil
-        else
-            direct, dot, dotDur, lo, hi, school = ParseDamage(legacyText)
-        end
-        hasPeriodicOutput = dot > 0
-        if not DB.includeDoT then dot, dotDur = 0, nil end
-        local total = direct + dot
-        t.total, t.lo, t.hi, t.dot, t.dotDur, t.school = total, lo, hi, dot, dotDur, school
+    local parsed = Estimates.ParseComponents(text, powerModel, wantsExpected)
+    local damage, healing = parsed.damage, parsed.healing
+    if type(rule) == "number" then
+        t.total, t.lo, t.hi = rule, rule, rule
+    elseif damage and (t.baselineDamage or estimate) then
+        t.dot, t.dotDur = DB.includeDoT and damage.periodic or 0, DB.includeDoT and damage.duration or nil
+        t.total, t.lo, t.hi = damage.direct + t.dot, damage.low, damage.high
+        t.school = damage.school
     end
-
-    if not light and (DB.showHealing or estimate) and text ~= "" then
-        local noDot = legacyText:gsub(P.dot, "") -- never read a DoT as a heal-over-time
-        local hDirect, hLo, hHi, hot, hotDur, absorb = ParseHealing(noDot)
-        hasPeriodicOutput = hasPeriodicOutput or hot > 0
-        if not DB.includeDoT then hot, hotDur = 0, nil end
-        local htotal = hDirect + hot
-        t.htotal, t.hLo, t.hHi, t.hot, t.hotDur, t.absorb = htotal, hLo, hHi, hot, hotDur, absorb
+    if not light and (DB.showHealing or estimate) then
+        t.absorb = parsed.absorb
+        if healing then
+            t.hot, t.hotDur = DB.includeDoT and healing.periodic or 0, DB.includeDoT and healing.duration or nil
+            t.htotal, t.hLo, t.hHi = healing.direct + t.hot, healing.low, healing.high
+        end
     end
 
     local damageTiming = t.total and t.total > 0 and (t.baselineDamage or wantsSustain)
     local healingTiming = t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
-    local expectedAmount
+    local effect = t.powerModel and DB.includeDoT and parsed.effect or nil
     if effect then
-        if DB.includeDoT and (DB.showPowerScaling or wantsExpected) then
-            local direct, tickTotal = Estimates.GetPeriodicAmounts(powerModel, text)
-            t.tickTotal = tickTotal
-            if wantsExpected then expectedAmount = direct end
-        end
-    elseif wantsExpected and not hasPeriodicOutput then
-        expectedAmount = Estimates.GetExpectedAmount(powerModel, text)
+        t.tickTotal = (damage or healing).periodic
     end
+    local expectedAmount = wantsExpected and parsed.expectedAmount
+    if expectedAmount == 0 and not effect then expectedAmount = nil end
+
     if damageTiming or healingTiming or expectedAmount then
-        local cd, gcd, cooldownsReadable = GetBaseTimings(spellID)
-        local cast, castReadable = GetCastTime(spellID)
-        local baseTime = math_max(cast, cd)
-        if DB.gcdFloor then baseTime = math_max(baseTime, gcd) end
-        if damageTiming then
-            local time = math_max(baseTime, t.dotDur or 0)
-            t.time = time > 0 and time or gcd
-            t.dps = t.total / t.time
-        end
-        if healingTiming then
-            local time = math_max(baseTime, t.hotDur or 0)
-            t.htime = time > 0 and time or gcd
-            t.hps = t.htotal / t.htime
-        end
-        if wantsSustain and cooldownsReadable and castReadable then
-            t.sustainCycle = math_max(t.time or 0, t.htime or 0)
-        end
-        if expectedAmount and cooldownsReadable and castReadable then
-            t.expectedAmount = expectedAmount
-            local time = math_max(baseTime, effect and effect.duration or 0)
-            t.expectedCycle = time > 0 and time or gcd
+        local cd, gcd = GetBaseTimings(spellID)
+        local cast = GetCastTime(spellID)
+        if cd and gcd and cast then
+            local baseTime = math_max(cast, cd, DB.gcdFloor and gcd or 0)
+            if damageTiming then
+                local time = math_max(baseTime, t.dotDur or 0)
+                if time > 0 then t.time, t.dps = time, t.total / time end
+            end
+            if healingTiming then
+                local time = math_max(baseTime, t.hotDur or 0)
+                if time > 0 then t.htime, t.hps = time, t.htotal / time end
+            end
+            if wantsSustain then t.sustainCycle = math_max(t.time or 0, t.htime or 0) end
+            if expectedAmount then
+                local time = math_max(baseTime, effect and effect.duration or 0)
+                if time > 0 then
+                    t.expectedAmount, t.expectedCycle, t.expectedEffect = expectedAmount, time, effect
+                end
+            end
         end
     end
 
@@ -749,19 +706,19 @@ local function Compute(spellID, light, estimate, powerModel)
     return t, estimate
 end
 
-local function BuildEntry(e, spellID, now, estimate, powerModel)
+local function BuildEntry(e, spellID, now, estimate, powerModel, isPet)
     e.dmgLine, e.dpcLine, e.rangeLine, e.effLine = false, false, false, false
     e.healLine, e.heffLine, e.absorbLine, e.nextLine, e.manaLine = false, false, false, false, false
     e.detailLines, e.schoolColor = nil, nil
     e.stamp = now
 
-    local t, readableEstimate = Compute(spellID, false, estimate, powerModel)
-    if t.requested then
-        e.stamp = 0 -- data not loaded yet: do not cache this result
+    local t, readableEstimate = Compute(spellID, false, estimate, powerModel, isPet)
+    if not t.loaded then
+        e.stamp = -math.huge -- allow a new hover to notice loaded data or retry
     end
 
     if t.baselineDamage and t.total and t.total > 0 then
-        if DB.showDPS or DB.showDPM then e.dmgLine = DamageLineText(t.dps) end
+        if t.dps and (DB.showDPS or DB.showDPM) then e.dmgLine = DamageLineText(t.dps) end
         e.dpcLine = DPCLineText(t.total)
         e.rangeLine = RangeLineText(t.lo, t.hi)
         e.effLine = EfficiencyLineText(t.total, t.cost)
@@ -787,17 +744,18 @@ local function BuildEntry(e, spellID, now, estimate, powerModel)
     if readableEstimate then return t end
 end
 
-local function GetEntry(spellID, estimate, powerModel)
+local function GetEntry(spellID, estimate, powerModel, isPet)
     local now = GetTime()
     local e = cache[spellID]
-    if not estimate and e and (now - e.stamp) < CACHE_TTL then return e end
+    if not estimate and e and e.isPet == isPet and (now - e.stamp) < CACHE_TTL then return e end
 
     if not e then
         e = entryPool[#entryPool]
         if e then entryPool[#entryPool] = nil else e = {} end
         cache[spellID] = e
     end
-    return e, BuildEntry(e, spellID, now, estimate, powerModel)
+    e.isPet = isPet
+    return e, BuildEntry(e, spellID, now, estimate, powerModel, isPet)
 end
 
 ----------------------------------------------------------------------
@@ -834,7 +792,7 @@ GameTooltip:HookScript("OnTooltipCleared", function()
         styledLines[i], styledFonts[i] = nil, nil
     end
     styledCount = 0
-    cur.spellID, cur.owner, cur.source, cur.added = nil, nil, nil, false
+    ClearTooltipContext()
 end)
 
 local function AddPowerLines(tooltip, t, dmgColor)
@@ -870,10 +828,10 @@ local function AddPowerLines(tooltip, t, dmgColor)
     end
     if t.expectedAmount then
         local rate, hit, crit, target, modifiers = Estimates.GetExpectedRate(model.expected, t.expectedAmount, t.expectedCycle,
-            model.periodic, t.tickTotal, model)
+            t.expectedEffect, t.tickTotal, model)
         if rate then
             local color = model.expected == "healing" and DB.healColor or dmgColor
-            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, model.periodic, target, modifiers), color)
+            AddStyledLine(tooltip, ExpectedLineText(model.expected, rate, hit, crit, t.expectedEffect, target, modifiers), color)
             if modifiers then
                 AddStyledLine(tooltip, "Modifiers: " .. table_concat(modifiers.labels, ", "), color)
             end
@@ -918,11 +876,11 @@ end
 
 AddSpellInfo = function(tooltip, spellID, source)
     if not DB or not spellID then return end
-    local model = source and (DB.showPowerScaling or DB.showExpectedThroughput)
-        and Estimates.GetSpellModel(spellID)
-    local estimate = source and (DB.showManaSustain or DB.showCasterStats or model)
+    local model = source and Estimates.GetSpellModel(spellID)
+    local estimate = source and (DB.showManaSustain or DB.showCasterStats
+        or (model and (DB.showPowerScaling or DB.showExpectedThroughput)))
         and Estimates.IsKnownPlayerSpell(spellID, source == ACTION)
-    local e, estimateData = GetEntry(spellID, estimate, model)
+    local e, estimateData = GetEntry(spellID, estimate, model, source == nil)
     local added = false
     local dmgColor = e.schoolColor or DB.damageColor
 
@@ -984,8 +942,8 @@ local function ResolveBookSpell(slot, bank)
     return id, bank == BANK_PLAYER
 end
 
-local function OnTooltipHook(tooltip, kind, slot, arg)
-    if not DB or IsSecret(slot) then return end
+ResolveTooltipSpell = function(kind, slot, arg)
+    if not DB or not IsWholeNumber(slot, 1) or IsSecret(arg) then return nil end
     local spellID, source
     if kind == ACTION then
         if not DB.showActionBar then return end
@@ -997,30 +955,30 @@ local function OnTooltipHook(tooltip, kind, slot, arg)
         spellID, isPlayerBook = ResolveBookSpell(slot, arg)
         if isPlayerBook then source = BOOK end
     end
-    if not spellID then return end
-
-    cur.spellID, cur.owner, cur.source, cur.added = spellID, tooltip:GetOwner(), source, false
-    AddSpellInfo(tooltip, spellID, source)
+    if IsWholeNumber(spellID, 1) then return spellID, source end
 end
 
-local errorShown = false
-local function Guarded(tooltip, kind, slot, arg)
-    local ok, err = pcall(OnTooltipHook, tooltip, kind, slot, arg)
-    if not ok and not errorShown then
-        errorShown = true
-        Print("error (shown once): " .. tostring(err))
+local function OnTooltipHook(tooltip, kind, slot, arg)
+    if tooltip ~= GameTooltip or (tooltip.IsForbidden and tooltip:IsForbidden()) then return end
+    ClearTooltipContext()
+    local spellID, source = ResolveTooltipSpell(kind, slot, arg)
+    if not spellID then return end
+    local owner = tooltip:GetOwner()
+    if not IsSecret(owner) and owner ~= nil then
+        cur.spellID, cur.owner, cur.kind, cur.slot, cur.arg, cur.source = spellID, owner, kind, slot, arg, source
     end
+    AddSpellInfo(tooltip, spellID, source)
 end
 
 if GameTooltip.SetAction then
     hooksecurefunc(GameTooltip, "SetAction", function(tooltip, slot)
-        Guarded(tooltip, ACTION, slot)
+        RunTooltipHandler(OnTooltipHook, tooltip, ACTION, slot)
     end)
 end
 
 if GameTooltip.SetSpellBookItem then
     hooksecurefunc(GameTooltip, "SetSpellBookItem", function(tooltip, slot, bank)
-        Guarded(tooltip, BOOK, slot, bank)
+        RunTooltipHandler(OnTooltipHook, tooltip, BOOK, slot, bank)
     end)
 end
 
@@ -1344,7 +1302,7 @@ local function CreateConfig()
     ------------------------------------------------------------------
     local calc = f.panels.calc
     MakeHeader(calc, "Damage math", 16, -8)
-    MakeCheck(calc, "Include damage over time", 16, -26, "includeDoT")
+    MakeCheck(calc, "Include periodic effects", 16, -26, "includeDoT")
     MakeCheck(calc, "Minimum time is the GCD", 16, -52, "gcdFloor")
     MakeCheck(calc, "Thousands separators", 16, -78, "thousands")
     MakeCheck(calc, "Show next rank comparison", 16, -104, "showNextRank")
