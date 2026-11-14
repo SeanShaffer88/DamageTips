@@ -611,6 +611,7 @@ local AddSpellInfo, ResolveTooltipSpell -- defined in the hook section
 local function ClearTooltipContext()
     cur.generation = cur.generation + 1
     cur.spellID, cur.owner, cur.kind, cur.slot, cur.arg, cur.source = nil, nil, nil, nil, nil, nil
+    cur.nativeInfo, cur.queuedRefresh, cur.deferredRefresh = nil, nil, nil
     cur.added, cur.processed = false, false
 end
 
@@ -628,27 +629,91 @@ local requests = {} -- per-spell attempt budget and retry deadline
 local pending = {}  -- exact attempt awaiting SPELL_DATA_LOAD_RESULT
 local waiting = 0
 local dataFrame = CreateFrame("Frame")
-local queuedGeneration
 
-local function RefreshTooltip(generation, spellID)
-    if queuedGeneration == generation then queuedGeneration = nil end
-    if generation ~= cur.generation or not DB or cur.added or not GameTooltip:IsShown()
-        or (GameTooltip.IsForbidden and GameTooltip:IsForbidden()) then return end
-    local owner = GameTooltip:GetOwner()
-    if IsSecret(owner) or owner ~= cur.owner then return end
-    local currentID, source = ResolveTooltipSpell(cur.kind, cur.slot, cur.arg)
-    if currentID == spellID and source == cur.source then
-        AddSpellInfo(GameTooltip, spellID, source)
+local function IsNativeRefreshBuild()
+    if not GetBuildInfo then return false end
+    local ok, version, build, _, interface = pcall(GetBuildInfo)
+    return ok and not IsSecret(version) and not IsSecret(build) and not IsSecret(interface)
+        and version == "1.60.1" and (build == "70938" or build == 70938) and interface == 16001
+end
+
+local function GetStockBookItem(owner)
+    local mixin = _G.SpellBookItemMixin
+    if not mixin or not owner.GetParent or (owner.IsForbidden and owner:IsForbidden()) then return end
+    local item = owner:GetParent()
+    if IsSecret(item) or not item or (item.IsForbidden and item:IsForbidden()) then return end
+    local button, show, slot, bank = item.Button, item.ShowSpellBookTooltip, item.slotIndex, item.spellBank
+    if not IsSecret(button) and button == owner and not IsSecret(show) and type(show) == "function"
+        and show == mixin.ShowSpellBookTooltip and not IsSecret(slot) and slot == cur.slot
+        and not IsSecret(bank) and bank == cur.arg then
+        return item, show
     end
 end
 
-local function QueueTooltipRefresh(spellID)
-    local generation = cur.generation
-    if cur.spellID ~= spellID or cur.added or queuedGeneration == generation
+local function HasStockActionUpdater(owner)
+    local mixin = _G.ActionBarActionButtonMixin
+    if not mixin or (owner.IsForbidden and owner:IsForbidden()) then return false end
+    local update, action = owner.UpdateTooltip, owner.action
+    return not IsSecret(update) and type(update) == "function" and update == mixin.SetTooltip
+        and not IsSecret(action) and action == cur.slot
+end
+
+local function RefreshTooltip(refresh)
+    if refresh ~= cur.queuedRefresh then return end
+    cur.queuedRefresh = nil
+    if refresh.generation ~= cur.generation or not DB
+        or (GameTooltip.IsForbidden and GameTooltip:IsForbidden()) then return end
+    local shown = GameTooltip:IsShown()
+    if IsSecret(shown) or not shown then return end
+    local owner = GameTooltip:GetOwner()
+    if IsSecret(owner) or owner ~= cur.owner then return end
+    local currentID, source = ResolveTooltipSpell(cur.kind, cur.slot, cur.arg)
+    if currentID ~= refresh.spellID or source ~= cur.source then return end
+
+    if cur.nativeInfo then
+        local info = GameTooltip:GetPrimaryTooltipInfo()
+        if IsSecret(info) or info ~= cur.nativeInfo then return end
+        if IsNativeRefreshBuild() then
+            -- Blizzard's existing action-button updater already refreshes its tooltip.
+            if cur.kind == ACTION and HasStockActionUpdater(owner) then return end
+            if cur.kind == BOOK then
+                local item, show = GetStockBookItem(owner)
+                if item then
+                    if not InCombatLockdown then return end
+                    local locked = InCombatLockdown()
+                    if IsSecret(locked) then return end
+                    if locked then
+                        cur.deferredRefresh = refresh
+                        return
+                    end
+                    cur.deferredRefresh = nil
+                    -- Preserve the spellbook's extra lines and gamepad anchoring.
+                    show(item)
+                    return
+                end
+            end
+        end
+    end
+
+    -- No safe replay is available. Keep the existing load-result fallback for
+    -- empty tooltips, but never append a second set of addon lines.
+    if refresh.spellData and not cur.added then
+        AddSpellInfo(GameTooltip, refresh.spellID, source)
+    end
+end
+
+local function QueueTooltipRefresh(spellID, spellData)
+    if not spellID or cur.spellID ~= spellID or (not spellData and (cur.kind ~= BOOK or not cur.nativeInfo))
         or not (C_Timer and C_Timer.After) then return end
-    queuedGeneration = generation
-    -- The event may fire inside the setter post-hook or the load call.
-    C_Timer.After(0, function() RunTooltipHandler(RefreshTooltip, generation, spellID) end)
+    local queued = cur.queuedRefresh
+    if queued then
+        queued.spellData = queued.spellData or spellData
+        return
+    end
+    local refresh = { generation = cur.generation, spellID = spellID, spellData = spellData }
+    cur.queuedRefresh = refresh
+    -- Spell events can fire synchronously from inside the tooltip's setter.
+    C_Timer.After(0, function() RunTooltipHandler(RefreshTooltip, refresh) end)
 end
 
 local function InvalidateSpellText(spellID)
@@ -670,7 +735,7 @@ local function FinishSpellRequest(spellID, attempt, success)
     attempt.retryAt = GetTime() + 2 ^ (attempt.count - 1)
     if success then
         InvalidateSpellText(spellID)
-        QueueTooltipRefresh(spellID)
+        QueueTooltipRefresh(spellID, true)
     end
 end
 
@@ -694,14 +759,30 @@ end
 
 dataFrame:RegisterEvent("SPELLS_CHANGED")
 dataFrame:RegisterEvent("SPELL_TEXT_UPDATE")
+dataFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
+dataFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+dataFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 dataFrame:SetScript("OnEvent", function(_, event, spellID, success)
     if event == "SPELLS_CHANGED" then
         rankIndexDirty = true
         if DB then InvalidateCache() end
+        QueueTooltipRefresh(cur.spellID)
     elseif event == "SPELL_TEXT_UPDATE" then
         InvalidateSpellText(spellID)
-        if IsWholeNumber(spellID, 1) then QueueTooltipRefresh(spellID) end
-    elseif IsWholeNumber(spellID, 1) then
+        if IsWholeNumber(spellID, 1) then QueueTooltipRefresh(spellID, true) end
+    elseif event == "MODIFIER_STATE_CHANGED" then
+        if DB and DB.shiftDetails and not IsSecret(spellID) and (spellID == "LSHIFT" or spellID == "RSHIFT") then
+            QueueTooltipRefresh(cur.spellID)
+        end
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        if DB and DB.showExpectedThroughput then QueueTooltipRefresh(cur.spellID) end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        local deferred = cur.deferredRefresh
+        if deferred and deferred.generation == cur.generation then
+            cur.deferredRefresh = nil
+            QueueTooltipRefresh(deferred.spellID, deferred.spellData)
+        end
+    elseif event == "SPELL_DATA_LOAD_RESULT" and IsWholeNumber(spellID, 1) then
         local attempt = pending[spellID]
         if attempt then FinishSpellRequest(spellID, attempt, not IsSecret(success) and success == true) end
     end
@@ -1043,14 +1124,15 @@ local function IsMainTooltip(tooltip)
         and not (tooltip.IsForbidden and tooltip:IsForbidden())
 end
 
-local function RenderTooltip(tooltip, kind, slot, arg, nativeShow)
+local function RenderTooltip(tooltip, kind, slot, arg, nativeInfo)
     local spellID, source = ResolveTooltipSpell(kind, slot, arg)
     if not spellID then return end
     local owner = tooltip:GetOwner()
     if not IsSecret(owner) and owner ~= nil then
         cur.spellID, cur.owner, cur.kind, cur.slot, cur.arg, cur.source = spellID, owner, kind, slot, arg, source
+        cur.nativeInfo = nativeInfo
     end
-    AddSpellInfo(tooltip, spellID, source, nativeShow)
+    AddSpellInfo(tooltip, spellID, source, nativeInfo ~= nil)
 end
 
 local function OnTooltipHook(tooltip, kind, slot, arg)
@@ -1074,7 +1156,7 @@ local function OnTooltipPostCall(tooltip, data)
     -- A native reprocess calls ClearLines before this post-call, even when the
     -- new data uses the same instance ID. For this pass append at most once.
     cur.processed = true
-    RenderTooltip(tooltip, getter == "GetAction" and ACTION or BOOK, args[1], args[2], true)
+    RenderTooltip(tooltip, getter == "GetAction" and ACTION or BOOK, args[1], args[2], info)
 end
 
 if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and TooltipDataProcessor.AllTypes

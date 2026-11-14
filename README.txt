@@ -178,8 +178,10 @@ Notes
   DamageTipsPatterns global is no longer used.
 * The basic DPS line requires a damage amount or range in the spell text.
 * Missing spell data is requested with bounded retries. A matching tooltip
-  with no DamageTips lines can update when the text arrives. If it already
-  has lines, the next native refresh adds the newly available information.
+  with no DamageTips lines can update when the text arrives. On build 70938,
+  an open stock spellbook tooltip also refreshes when Shift, the target, or
+  its spell data changes. DamageTips waits until combat ends to request that
+  refresh. Stock action bars use WoW's own tooltip update.
 * Next-rank comparisons use readable ranked spells from the player spellbook.
   The current spell must match an indexed rank before a comparison is shown.
 
