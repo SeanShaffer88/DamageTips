@@ -48,6 +48,9 @@ t = parse("Empowers an ally for 999 Fire damage on their next attack. Blasts for
 expect(not t.expectedAmount, "a recognized direct-model sentence cannot apply crit and hit to a different amount")
 t = parse("Blasts the enemy for 999 Fire damage, then causes 180 Fire damage to the target.", models[2136], true)
 expect(not t.expectedAmount, "mismatched direct-model sentence within one clause must fail closed")
+t = parse("Blasts the enemy for 180 Fire damage. Heals the target for 1,2 over 12 sec.", models[2136], true)
+expect(t.damage.direct == 180 and not t.expectedAmount,
+    "malformed periodic clause still excludes a direct-only forecast")
 
 local originalAttackPower = UnitAttackPower
 local reads = 0
