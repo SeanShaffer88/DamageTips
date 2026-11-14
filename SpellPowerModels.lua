@@ -67,7 +67,7 @@ local function Periodic(grammar, school, ticks, interval, coefficient, options)
             directCrit = options.directCrit == true,
             hitMode = options.hitMode or (healing and "none" or "application"),
             channel = options.channel, ranged = options.ranged,
-            binaryApplication = options.binaryApplication,
+            binaryApplication = options.binaryApplication, perRecipient = options.perRecipient,
         },
     }
     if healing then
@@ -112,6 +112,13 @@ AddRanks(Periodic("missiles", "arcane", 5, 1, 0.286, missiles), 5145, 8416, 8417
 -- Mind Flay has one application hit. The base channel excludes talent ramp.
 AddRanks(Periodic("mindFlay", "shadow", 3, 1, 0.167, { channel = "base", binaryApplication = true }),
     15407, 17311, 17312, 17313, 17314, 18807)
+
+-- 70938 uses 6.6% healing power on the periodic effect; 70888 uses 3.3%.
+-- Wild Growth is front-loaded, so only display nominal full-effect scaling.
+local wildGrowth = Periodic("wildGrowth", nil, 7, 1, 0.066, { perRecipient = true })
+addon.SpellPowerModels70938 = {
+    [408120] = wildGrowth, [1238214] = wildGrowth, [1238215] = wildGrowth,
+}
 
 -- BEGIN GENERATED 70938 ALLOWLIST
 -- Reproduce with tools/validate_forever_models.py. See docs/forever-70938-validation.md.

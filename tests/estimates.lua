@@ -1215,7 +1215,8 @@ local exported = chat[#chat]
 local statusStart = #chat
 command("status")
 expect(chatContains(statusStart, "version 1.60.1, build 70938, Interface 16001"), "status prints the exact build")
-expect(chatContains(statusStart, "enabled for 4 verified spell IDs"), "status counts only enabled modeled IDs")
+expect(chatContains(statusStart, "enabled for 7 verified spell IDs"),
+    "status counts only enabled legacy IDs plus the three build-specific ranks")
 expect(chatContains(statusStart, "power scaling |cff00ff00on|r, expected DPS/HPS |cff00ff00on|r"),
     "status reports saved option flags")
 command("export")
@@ -1243,7 +1244,8 @@ GetBuildInfo = getBuild
 
 namespace.Verified70938, buildNumber = verified70938, 70938
 local productionStatus, _, _, _, productionCount = estimates.GetModelBuildStatus()
-expect(productionStatus == "verified" and productionCount == 209, "70938 evidence approves 209 production spell IDs")
+expect(productionStatus == "verified" and productionCount == 212,
+    "70938 includes the 209 legacy ranks and three build-specific ranks")
 check70938Output(2136, fireBlast, "+100 Fire spell power", "Expected DPS")
 check70938Output(2061, directHealText, "+100 healing power", "Expected HPS")
 check70938Output(172, corruptionText, "/ tick", "Expected DPS (full effect")
