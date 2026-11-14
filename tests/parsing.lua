@@ -11,10 +11,10 @@ local function loadModels(locale)
     for _, file in ipairs({ "SpellPowerModels", "SpellModifiers", "SpellEstimates" }) do
         assert(loadfile(addonPath .. "/" .. file .. ".lua"))("DamageTips", private)
     end
-    return private.SpellEstimates.ParseComponents, private.SpellPowerModels
+    return private.SpellEstimates.ParseComponents, private.SpellPowerModels, private.SpellEstimates.ResolveExpectedAmount
 end
 
-local parse, models = loadModels("enUS")
+local parse, models, resolveExpectedAmount = loadModels("enUS")
 local t = parse("Heals a friendly target for 194–238.", models[2061], true)
 expect(t.healing.direct == 216 and t.expectedAmount == 216 and not t.damage,
     "Flash Heal dashes and bare health amount produce the same base and model components")
@@ -60,9 +60,12 @@ UnitAttackPower = function()
 end
 local bloodthirst = "Instantly attack the target causing damage equal to 45% of your Attack Power plus 30."
 t = parse(bloodthirst, models[23881], false)
-expect(reads == 0 and not t.expectedAmount, "baseline parsing does not query attack power")
+expect(reads == 0 and not t.expectedAmount and not t.attackPowerBase, "baseline parsing does not query attack power")
 t = parse(bloodthirst, models[23881], true)
-expect(reads == 1 and t.expectedAmount == 255, "exact Bloodthirst AP formula remains forecast-only")
+expect(reads == 0 and t.attackPowerBase == 30 and not t.expectedAmount,
+    "exact Bloodthirst AP formula parsing does not query attack power")
+expect(resolveExpectedAmount(t, models[23881]) == 255 and reads == 1,
+    "Bloodthirst applies live AP only when resolving the expected amount")
 UnitAttackPower = originalAttackPower
 
 local localized = loadModels("deDE")

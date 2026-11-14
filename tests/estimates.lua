@@ -143,7 +143,9 @@ end
 Minimap = newWidget()
 
 GameTooltip = { shown = true }
-function GameTooltip:HookScript(_, fn) self.onCleared = fn end
+function GameTooltip:HookScript(event, fn)
+    if event == "OnTooltipCleared" then self.onCleared = fn end
+end
 function GameTooltip:SetAction() tooltipLines = {}; self.onCleared() end
 GameTooltip.SetSpellBookItem = GameTooltip.SetAction
 function GameTooltip:AddLine(line) tooltipLines[#tooltipLines + 1] = line end
@@ -217,7 +219,7 @@ expect(hasNoEstimates() and knownCalls == 0 and regenCalls == 0 and critCalls ==
     "disabled options do not query new player APIs")
 local baselineCostCalls = costCalls
 hover()
-expect(costCalls == baselineCostCalls, "baseline hover remains cached")
+expect(costCalls == baselineCostCalls + 1, "baseline hover rereads live mana cost")
 
 command("")
 local config = assert(DamageTipsConfigFrame)

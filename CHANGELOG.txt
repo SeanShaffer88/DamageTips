@@ -1,4 +1,8 @@
 Unreleased
+- Restore DamageTips lines when WoW rebuilds an action-bar or spellbook
+  tooltip, with one set of lines per rebuild.
+- Reuse public spell parsing while recalculating estimates from current
+  target and player stats.
 - Apply DT1 settings only after the entire import passes validation.
   Import and reset immediately sync the minimap button.
 - Show Shift details for direct heals, periodic healing and absorbs.
