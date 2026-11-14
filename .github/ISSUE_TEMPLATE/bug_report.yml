@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a problem with DamageTips.
+body:
+  - type: textarea
+    id: status
+    attributes:
+      label: DamageTips status
+      description: 'Run `/dtips status` in WoW and paste the output. If the command does not work, describe what happens.'
+    validations:
+      required: true
+  - type: input
+    id: spell-rank
+    attributes:
+      label: Spell and rank
+      description: Enter the spell name and rank. If no spell is involved, enter N/A.
+      placeholder: Healing Touch, Rank 2
+    validations:
+      required: true
+  - type: dropdown
+    id: tooltip-location
+    attributes:
+      label: Where did the tooltip appear?
+      options:
+        - Action bar
+        - Spellbook
+        - Both
+        - Other location
+        - No tooltip involved
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: List the steps, say what you expected and what actually happened, and name the tooltip location if you selected Other location.
+    validations:
+      required: true
+  - type: upload
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: If available, attach a screenshot showing the problem.
+    validations:
+      required: false
