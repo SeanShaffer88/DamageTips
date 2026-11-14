@@ -44,6 +44,7 @@ local DPS_FORMATS = { [0] = "%.0f", [1] = "%.1f", [2] = "%.2f" }
 
 local DEBUG = false
 local DB
+local BuildMinimapButton, RefreshMinimapButton, RefreshConfig
 
 local DEFAULTS = {
     showDPS       = true,   -- "DPS: x"
@@ -82,6 +83,9 @@ local BOOL_KEYS = { "showDPS", "showDPM", "showMana", "showDPMana", "showActionB
                     "showManaSustain", "showCasterStats", "showPowerScaling",
                     "showExpectedThroughput" }
 local ENUMS = { dpsDecimals = { 0, 1, 2 }, manaMode = { 1, 2, 3 }, fontOutline = { 1, 2, 3 } }
+local COLOR_KEYS = { "damageColor", "healColor", "manaColor" }
+local DEFAULT_MINIMAP_ANGLE = 215
+local MAX_SPELL_ID = 4294967295
 
 local PREFIX = "|cffffd100DamageTips|r: "
 local function Print(msg) print(PREFIX .. msg) end
@@ -89,14 +93,69 @@ local function Print(msg) print(PREFIX .. msg) end
 ----------------------------------------------------------------------
 -- Saved variables: validate everything, never trust the WTF contents
 ----------------------------------------------------------------------
+local function FiniteNumber(value)
+    if IsSecret(value) then return nil end
+    local kind = type(value)
+    if kind ~= "number" and kind ~= "string" then return nil end
+    local n = tonumber(value)
+    if n and n > -math.huge and n < math.huge then return n end
+end
+
+local function SpellIDKey(value)
+    local id = FiniteNumber(value)
+    if id and id > 0 and id <= MAX_SPELL_ID and id == math_floor(id) then
+        return string_format("%.0f", id)
+    end
+end
+
+local function ReadRuleValue(value)
+    if IsSecret(value) then return nil end
+    if value == "hide" then return value end
+    local number = FiniteNumber(value)
+    if number and number >= 0 then return number end
+end
+
+local function ReadEnum(value, allowed)
+    local n = FiniteNumber(value)
+    for _, option in ipairs(allowed) do
+        if n == option then return n end
+    end
+end
+
+local function NormalizeAngle(n)
+    local angle = math.fmod(n, 360)
+    if angle < 0 then angle = angle + 360 end
+    return angle < 360 and angle or 0
+end
+
 local function SanitizeColor(c, default)
     if type(c) ~= "table" then c = {} end
+    local color = {}
     for i = 1, 3 do
-        local v = tonumber(c[i])
+        local v = FiniteNumber(c[i])
         if not v then v = default[i] end
-        c[i] = math_min(1, math_max(0, v))
+        color[i] = math_min(1, math_max(0, v))
     end
-    return c
+    return color
+end
+
+local function SanitizeRules(source)
+    local rules, aliases = {}, {}
+    if type(source) ~= "table" then return rules end
+    for id, value in pairs(source) do
+        local key, rule = SpellIDKey(id), ReadRuleValue(value)
+        if key and rule ~= nil then
+            if key == id then
+                rules[key] = rule
+            elseif not aliases[key] or tostring(id) < aliases[key].original then
+                aliases[key] = { original = tostring(id), value = rule }
+            end
+        end
+    end
+    for key, alias in pairs(aliases) do
+        if rules[key] == nil then rules[key] = alias.value end
+    end
+    return rules
 end
 
 local function InitDB()
@@ -114,32 +173,17 @@ local function InitDB()
         if type(db[key]) ~= "boolean" then db[key] = DEFAULTS[key] end
     end
     for key, allowed in pairs(ENUMS) do
-        local v, valid = tonumber(db[key]), false
-        for _, a in ipairs(allowed) do
-            if v == a then valid = true end
-        end
-        if valid then db[key] = v else db[key] = DEFAULTS[key] end
+        db[key] = ReadEnum(db[key], allowed) or DEFAULTS[key]
     end
 
-    local size = tonumber(db.fontSize) or DEFAULTS.fontSize
+    local size = FiniteNumber(db.fontSize) or DEFAULTS.fontSize
     db.fontSize = math_min(FONT_MAX, math_max(FONT_MIN, math_floor(size + 0.5)))
 
-    db.damageColor = SanitizeColor(db.damageColor, DEFAULTS.damageColor)
-    db.manaColor = SanitizeColor(db.manaColor, DEFAULTS.manaColor)
-    db.healColor = SanitizeColor(db.healColor, DEFAULTS.healColor)
-
-    if type(db.minimapAngle) ~= "number" then db.minimapAngle = 215 end
-
-    local rules = {}
-    if type(db.spellRules) == "table" then
-        for k, v in pairs(db.spellRules) do
-            if type(k) == "string" and tonumber(k) then
-                if v == "hide" then rules[k] = "hide"
-                elseif type(v) == "number" and v >= 0 then rules[k] = v end
-            end
-        end
+    for _, key in ipairs(COLOR_KEYS) do
+        db[key] = SanitizeColor(db[key], DEFAULTS[key])
     end
-    db.spellRules = rules
+    db.minimapAngle = NormalizeAngle(FiniteNumber(db.minimapAngle) or DEFAULT_MINIMAP_ANGLE)
+    db.spellRules = SanitizeRules(db.spellRules)
 
     DB = db
 end
@@ -159,24 +203,30 @@ local function InvalidateCache()
     end
 end
 
--- Any option that changes the text of a line goes through here.
-local function SetOption(key, value)
-    DB[key] = value
-    InvalidateCache()
-end
-
 local function CopyColor(dst, src)
     dst[1], dst[2], dst[3] = src[1], src[2], src[3]
 end
 
+local function SettingsChanged(minimapChanged)
+    InvalidateCache()
+    if minimapChanged then
+        BuildMinimapButton()
+    end
+    if RefreshConfig then RefreshConfig() end
+end
+
+local function SetOption(key, value)
+    DB[key] = value
+    SettingsChanged(key == "showMinimap")
+end
+
 local function ResetDB()
+    -- Spell rules and the minimap position are independent user customizations.
     for _, key in ipairs(BOOL_KEYS) do DB[key] = DEFAULTS[key] end
     for key in pairs(ENUMS) do DB[key] = DEFAULTS[key] end
     DB.fontSize = DEFAULTS.fontSize
-    CopyColor(DB.damageColor, DEFAULTS.damageColor)
-    CopyColor(DB.manaColor, DEFAULTS.manaColor)
-    CopyColor(DB.healColor, DEFAULTS.healColor)
-    InvalidateCache()
+    for _, key in ipairs(COLOR_KEYS) do CopyColor(DB[key], DEFAULTS[key]) end
+    SettingsChanged(true)
 end
 
 ----------------------------------------------------------------------
@@ -311,37 +361,40 @@ local function NextRankLineText(dps, nextDPS)
         (nextDPS - dps) / dps * 100)
 end
 
--- Breakdown lines shown while Shift is held (components already parsed).
-local function BuildDetailLines(t)
+
+-- Breakdown lines supplement output that is already visible in the tooltip.
+local function BuildDetailLines(t, damage, healing, absorb)
+    if not DB.shiftDetails or not (damage or healing or absorb) then return nil end
     local lines = {}
-    local function add(s) lines[#lines + 1] = s end
-    if t.lo and t.hi and t.lo ~= t.hi then
-        add(string_format("Direct: %s-%s (avg %s)",
-            FormatNumber(string_format("%.0f", t.lo)),
-            FormatNumber(string_format("%.0f", t.hi)),
-            FormatNumber(string_format("%.0f", (t.lo + t.hi) / 2))))
-    elseif t.total and t.total > 0 then
-        add("Damage: " .. FormatNumber(string_format("%.0f", t.total)))
-    end
-    if t.dot and t.dot > 0 then
-        add(string_format("Damage over time: %s over %s sec",
-            FormatNumber(string_format("%.0f", t.dot)), tostring(t.dotDur or "?")))
-    end
-    if t.time then add(string_format("Divisor: %.2f sec", t.time)) end
-    if t.school then add("School: " .. t.school:sub(1, 1):upper() .. t.school:sub(2)) end
-    if DB.showHealing and t.htotal and t.htotal > 0 then
-        add("Healing: " .. FormatNumber(string_format("%.0f", t.htotal)))
-        if t.hot and t.hot > 0 then
-            add(string_format("Heal over time: %s over %s sec",
-                FormatNumber(string_format("%.0f", t.hot)), tostring(t.hotDur or "?")))
+    local function add(line) lines[#lines + 1] = line end
+    local function amount(value) return FormatNumber(string_format("%.0f", value)) end
+    local function direct(label, low, high)
+        if not low or low <= 0 and high <= 0 then return end
+        if low == high then
+            add(label .. ": " .. amount(low))
+        else
+            add(string_format("%s: %s-%s (avg %s)", label, amount(low), amount(high),
+                amount(low + (high - low) / 2)))
         end
-        if t.htime then add(string_format("Heal divisor: %.2f sec", t.htime)) end
     end
-    if DB.showHealing and t.absorb and t.absorb > 0 then
-        add("Absorb: " .. FormatNumber(string_format("%.0f", t.absorb)))
+    local function periodic(label, total, duration)
+        if total and total > 0 then
+            add(string_format("%s: %s over %s sec", label, amount(total), tostring(duration or "?")))
+        end
     end
-    if #lines == 0 then return nil end
-    return lines
+    if damage then
+        direct("Direct damage", t.lo, t.hi)
+        periodic("Damage over time", t.dot, t.dotDur)
+        if t.time then add(string_format("Damage divisor: %.2f sec", t.time)) end
+        if t.school then add("School: " .. t.school:sub(1, 1):upper() .. t.school:sub(2)) end
+    end
+    if healing then
+        direct("Direct healing", t.hLo, t.hHi)
+        periodic("Healing over time", t.hot, t.hotDur)
+        if t.htime then add(string_format("Healing divisor: %.2f sec", t.htime)) end
+    end
+    if absorb then add("Absorb per cast: " .. amount(t.absorb)) end
+    return #lines > 0 and lines or nil
 end
 
 local function ManaLineText(cost, maxMana)
@@ -630,7 +683,8 @@ local function Compute(spellID, light, estimate, powerModel, isPet)
     end
     if DEBUG then Print("spell text: " .. (text ~= "" and text or "<none / secret>")) end
 
-    local rule = DB.spellRules and DB.spellRules[tostring(spellID)]
+    local ruleID = SpellIDKey(spellID)
+    local rule = ruleID and DB.spellRules[ruleID]
     if rule == "hide" then
         t.hidden = true
         return t
@@ -724,7 +778,6 @@ local function BuildEntry(e, spellID, now, estimate, powerModel, isPet)
         e.effLine = EfficiencyLineText(t.total, t.cost)
         e.nextLine = NextRankLineText(t.dps, t.nextDPS)
         if DB.schoolTint and t.school then e.schoolColor = SCHOOL_COLORS[t.school] end
-        e.detailLines = BuildDetailLines(t)
     end
 
     if DB.showHealing and t.htotal and t.htotal > 0 then
@@ -732,6 +785,8 @@ local function BuildEntry(e, spellID, now, estimate, powerModel, isPet)
         e.heffLine = HealEffLineText(t.htotal, t.cost)
     end
     e.absorbLine = AbsorbLineText(t.absorb)
+    e.detailLines = BuildDetailLines(t, e.dmgLine or e.dpcLine or e.rangeLine or e.effLine or e.nextLine,
+        e.healLine or e.heffLine, e.absorbLine)
 
     if DB.showMana and t.cost and t.cost > 0 then
         local maxMana
@@ -987,7 +1042,6 @@ end
 ----------------------------------------------------------------------
 local config
 local cfgTab = "lines"
-local RefreshMinimapButton -- assigned in the minimap section further down
 local OnOptionChanged, OpenColorPicker -- defined below in this section
 local ExportSettings, ImportSettings -- assigned in the sharing section further down
 
@@ -1006,7 +1060,6 @@ local function MakeCheck(parent, label, x, y, key)
     text:SetText(label)
     cb:SetScript("OnClick", function(self)
         OnOptionChanged(key, self:GetChecked() and true or false)
-        if key == "showMinimap" and RefreshMinimapButton then RefreshMinimapButton() end
     end)
     parent.checks[key] = cb
     return cb
@@ -1157,7 +1210,7 @@ local function SyncCycle(btn)
     end
 end
 
-local function RefreshConfig()
+RefreshConfig = function()
     if not config or not DB then return end
     for key, cb in pairs(config.checks) do cb:SetChecked(DB[key]) end
     for _, btn in pairs(config.cycles) do SyncCycle(btn) end
@@ -1178,7 +1231,6 @@ end
 
 OnOptionChanged = function(key, value)
     SetOption(key, value)
-    if config then UpdatePreview() end
 end
 
 -- Opens the colour picker for a { r, g, b } table
@@ -1420,16 +1472,15 @@ local function CreateConfig()
             Print("import failed: " .. tostring(err))
         end
         self:ClearFocus()
-        RefreshConfig()
     end)
 
     local reset = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    reset:SetSize(140, 24)
+    reset:SetSize(214, 24)
     reset:SetPoint("BOTTOMRIGHT", -24, 16)
-    reset:SetText("Reset to defaults")
+    reset:SetText("Reset options (keep spell rules)")
     reset:SetScript("OnClick", function()
         ResetDB()
-        RefreshConfig()
+        Print("options reset; spell rules and minimap position kept")
     end)
 
     config = f
@@ -1462,7 +1513,8 @@ local minimapBtn
 
 local function PositionMinimapButton()
     if not minimapBtn then return end
-    local angle = math.rad((DB and DB.minimapAngle) or 215)
+    local angle = math.rad(DB.minimapAngle)
+    minimapBtn:ClearAllPoints()
     minimapBtn:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * 80, math.sin(angle) * 80)
 end
 
@@ -1476,8 +1528,12 @@ RefreshMinimapButton = function()
     end
 end
 
-local function BuildMinimapButton()
-    if minimapBtn or not Minimap then return end
+BuildMinimapButton = function()
+    if minimapBtn then
+        RefreshMinimapButton()
+        return true
+    end
+    if not Minimap then return false end
     local b = CreateFrame("Button", "DamageTipsMinimapButton", Minimap)
     b:SetSize(31, 31)
     b:SetFrameStrata("MEDIUM")
@@ -1515,6 +1571,7 @@ local function BuildMinimapButton()
     end)
     minimapBtn = b
     RefreshMinimapButton()
+    return true
 end
 
 ----------------------------------------------------------------------
@@ -1537,7 +1594,7 @@ ExportSettings = function()
     for _, k in ipairs(BOOL_KEYS) do out[#out + 1] = k .. "=" .. (DB[k] and "1" or "0") end
     for k in pairs(ENUMS) do out[#out + 1] = k .. "=" .. tostring(DB[k]) end
     out[#out + 1] = "fontSize=" .. tostring(DB.fontSize)
-    out[#out + 1] = "minimapAngle=" .. tostring(DB.minimapAngle or 215)
+    out[#out + 1] = "minimapAngle=" .. tostring(DB.minimapAngle)
     out[#out + 1] = "damageColor=" .. ColorToHex(DB.damageColor)
     out[#out + 1] = "healColor=" .. ColorToHex(DB.healColor)
     out[#out + 1] = "manaColor=" .. ColorToHex(DB.manaColor)
@@ -1548,70 +1605,82 @@ ExportSettings = function()
     return table_concat(out, ";")
 end
 
--- Validates everything first; only touches the live DB if the whole string
--- is well-formed. Returns true, or false + reason.
+
+local function ParseFields(text, separator, pattern, canonicalKey)
+    local fields = {}
+    local start = 1
+    while start <= #text do
+        local stop = text:find(separator, start, true)
+        local token = text:sub(start, stop and stop - 1 or #text)
+        local key, value = token:match(pattern)
+        if not key then return nil, "malformed field" end
+        if canonicalKey then key = canonicalKey(key) end
+        if not key then return nil, "invalid spell ID" end
+        if fields[key] ~= nil then return nil, "duplicate field " .. key end
+        fields[key] = value
+        if not stop then break end
+        if stop == #text and separator == "," then return nil, "empty spell rule" end
+        start = stop + 1
+    end
+    return fields
+end
+
+-- Validate and decode the whole string before any changes to SavedVariables.
+-- Syntactically valid fields from a newer exporter are ignored.
 ImportSettings = function(str)
     if type(str) ~= "string" then return false, "not text" end
     str = str:match("^%s*(.-)%s*$")
     if str:sub(1, 4) ~= "DT1;" then return false, "not a DamageTips settings string" end
+    if str:find("%c") then return false, "control characters in settings" end
 
-    local vals = {}
-    for pair in str:gmatch("[^;]+") do
-        local k, v = pair:match("^([^=]+)=(.*)$")
-        if k then vals[k] = v end
+    local vals, bad = ParseFields(str:sub(5), ";", "^([%a_][%w_]*)=(.*)$")
+    if not vals then return false, bad end
+    local changes = {}
+    for _, key in ipairs(BOOL_KEYS) do
+        local value = vals[key]
+        if value ~= nil then
+            if value ~= "0" and value ~= "1" then return false, "bad value for " .. key end
+            changes[key] = value == "1"
+        end
     end
-
-    for _, k in ipairs(BOOL_KEYS) do
-        local v = vals[k]
-        if v ~= nil and v ~= "0" and v ~= "1" then return false, "bad value for " .. k end
-    end
-    for k, allowed in pairs(ENUMS) do
-        local v = vals[k]
-        if v ~= nil then
-            local n, ok = tonumber(v), false
-            for _, a in ipairs(allowed) do if n == a then ok = true end end
-            if not ok then return false, "bad value for " .. k end
+    for key, allowed in pairs(ENUMS) do
+        if vals[key] ~= nil then
+            local number = ReadEnum(vals[key], allowed)
+            if number == nil then return false, "bad value for " .. key end
+            changes[key] = number
         end
     end
     if vals.fontSize ~= nil then
-        local n = tonumber(vals.fontSize)
+        local n = FiniteNumber(vals.fontSize)
         if not n or n < FONT_MIN or n > FONT_MAX then return false, "bad font size" end
+        changes.fontSize = math_floor(n + 0.5)
+    end
+    if vals.minimapAngle ~= nil then
+        local n = FiniteNumber(vals.minimapAngle)
+        if not n then return false, "bad minimap angle" end
+        changes.minimapAngle = NormalizeAngle(n)
     end
     local colors = {}
-    for _, k in ipairs({ "damageColor", "healColor", "manaColor" }) do
-        if vals[k] ~= nil then
-            colors[k] = HexToColor(vals[k])
-            if not colors[k] then return false, "bad colour for " .. k end
+    for _, key in ipairs(COLOR_KEYS) do
+        if vals[key] ~= nil then
+            colors[key] = HexToColor(vals[key])
+            if not colors[key] then return false, "bad colour for " .. key end
         end
     end
-    local rules
     if vals.spellRules ~= nil then
-        rules = {}
-        if vals.spellRules ~= "" then
-            for item in vals.spellRules:gmatch("[^,]+") do
-                local id, v = item:match("^(%d+):(.+)$")
-                if not id then return false, "bad spell rule: " .. item end
-                if v == "hide" then rules[id] = "hide"
-                elseif tonumber(v) and tonumber(v) >= 0 then rules[id] = tonumber(v)
-                else return false, "bad spell rule value: " .. item end
-            end
+        local rules, err = ParseFields(vals.spellRules, ",", "^(%d+):(.+)$", SpellIDKey)
+        if not rules then return false, err end
+        for key, value in pairs(rules) do
+            local rule = ReadRuleValue(value)
+            if rule == nil then return false, "bad spell rule value for " .. key end
+            rules[key] = rule
         end
+        changes.spellRules = rules
     end
 
-    for _, k in ipairs(BOOL_KEYS) do
-        if vals[k] ~= nil then SetOption(k, vals[k] == "1") end
-    end
-    for k in pairs(ENUMS) do
-        if vals[k] ~= nil then SetOption(k, tonumber(vals[k])) end
-    end
-    if vals.fontSize ~= nil then DB.fontSize = math_floor(tonumber(vals.fontSize) + 0.5) end
-    if vals.minimapAngle ~= nil then
-        local n = tonumber(vals.minimapAngle)
-        if n then DB.minimapAngle = n % 360 end
-    end
-    for k, c in pairs(colors) do CopyColor(DB[k], c) end
-    if rules then DB.spellRules = rules end
-    InvalidateCache()
+    for key, value in pairs(changes) do DB[key] = value end
+    for key, color in pairs(colors) do CopyColor(DB[key], color) end
+    SettingsChanged(changes.showMinimap ~= nil or changes.minimapAngle ~= nil)
     return true
 end
 
@@ -1619,12 +1688,12 @@ end
 local function ResolveSpellArg(arg)
     arg = (arg or ""):match("^%s*(.-)%s*$")
     if arg == "" then return nil end
-    local id = tonumber(arg)
-    if id then return id end
+    if tonumber(arg) then return SpellIDKey(arg) end
     if C_Spell and C_Spell.GetSpellInfo then
-        local info = C_Spell.GetSpellInfo(arg)
-        local sid = info and info.spellID
-        if type(sid) == "number" and not IsSecret(sid) then return sid end
+        local ok, info = pcall(C_Spell.GetSpellInfo, arg)
+        if ok and not IsSecret(info) and type(info) == "table" then
+            return SpellIDKey(info.spellID)
+        end
     end
     return nil
 end
@@ -1663,7 +1732,7 @@ local function ShowHelp()
     print("  |cffffd100/damagetips healing|r - toggle healing lines (" .. OnOff(DB.showHealing) .. ")")
     print("  |cffffd100/damagetips minimap|r - toggle the minimap button (" .. OnOff(DB.showMinimap) .. ")")
     print("  |cffffd100/damagetips debug|r - toggle debug output (" .. OnOff(DEBUG) .. ")")
-    print("  |cffffd100/damagetips reset|r - restore default settings")
+    print("  |cffffd100/damagetips reset|r - reset options, keeping spell rules and minimap position")
     print("  |cffffd100/damagetips hide <spell>|show <spell>|r - hide or restore a spell's lines")
     print("  |cffffd100/damagetips setdmg <spell> <avg>|r - pin a spell's average damage")
     print("  |cffffd100/damagetips rules|r - list spell rules")
@@ -1698,7 +1767,6 @@ SlashCmdList["DAMAGETIPS"] = function(msg)
         ShowStatus()
     elseif toggle then
         SetOption(toggle.key, not DB[toggle.key])
-        RefreshConfig()
         Print(toggle.label .. " " .. OnOff(DB[toggle.key]))
     elseif cmd == "debug" then
         DEBUG = not DEBUG
@@ -1710,31 +1778,29 @@ SlashCmdList["DAMAGETIPS"] = function(msg)
         end
     elseif cmd == "reset" then
         ResetDB()
-        RefreshConfig()
-        Print("settings reset to defaults")
+        Print("options reset; spell rules and minimap position kept")
     elseif cmd == "minimap" then
         SetOption("showMinimap", not DB.showMinimap)
-        RefreshMinimapButton()
-        RefreshConfig()
         Print("minimap button " .. OnOff(DB.showMinimap))
     elseif cmd == "hide" then
         local id = ResolveSpellArg(rest)
         if not id then Print("usage: /damagetips hide <spell name or ID>") return end
-        DB.spellRules[tostring(id)] = "hide"
-        InvalidateCache()
+        DB.spellRules[id] = "hide"
+        SettingsChanged(false)
         Print("hiding DamageTips lines for spell " .. id)
     elseif cmd == "show" then
         local id = ResolveSpellArg(rest)
         if not id then Print("usage: /damagetips show <spell name or ID>") return end
-        DB.spellRules[tostring(id)] = nil
-        InvalidateCache()
+        DB.spellRules[id] = nil
+        SettingsChanged(false)
         Print("spell " .. id .. " uses normal parsing again")
     elseif cmd == "setdmg" then
-        local name, n = rest:match("^(.-)%s+(%d+%.?%d*)$")
+        local name, n = rest:match("^(.-)%s+(%S+)$")
         local id = name and ResolveSpellArg(name)
-        if not id or not n then Print("usage: /damagetips setdmg <spell name or ID> <average damage>") return end
-        DB.spellRules[tostring(id)] = tonumber(n)
-        InvalidateCache()
+        local value = FiniteNumber(n)
+        if not id or not value or value < 0 then Print("usage: /damagetips setdmg <spell name or ID> <average damage>") return end
+        DB.spellRules[id] = value
+        SettingsChanged(false)
         Print("spell " .. id .. " average damage pinned to " .. n)
     elseif cmd == "rules" then
         local any = false
@@ -1749,7 +1815,6 @@ SlashCmdList["DAMAGETIPS"] = function(msg)
     elseif cmd == "import" then
         local ok, err = ImportSettings(rest)
         if ok then
-            RefreshConfig()
             Print("settings imported")
         else
             Print("import failed: " .. tostring(err))
@@ -1765,9 +1830,12 @@ end
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
 loader:SetScript("OnEvent", function(self, event, name)
-    if name == ADDON_NAME then
+    if event == "ADDON_LOADED" and name == ADDON_NAME then
         InitDB()
-        BuildMinimapButton()
+        if not BuildMinimapButton() then self:RegisterEvent("PLAYER_LOGIN") end
         self:UnregisterEvent("ADDON_LOADED")
+    elseif event == "PLAYER_LOGIN" then
+        BuildMinimapButton()
+        self:UnregisterEvent("PLAYER_LOGIN")
     end
 end)

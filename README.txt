@@ -88,6 +88,13 @@ Commands
 /damagetips export  Print a settings string to share
 /damagetips import <string>   Apply a settings string
 
+Valid DT1 strings from older versions still import. Partial strings leave
+omitted settings alone, and spellRules= clears the rule list. Malformed
+imports leave settings unchanged. Import and reset immediately update the
+minimap button. Reset keeps your saved minimap position and spell rules.
+Hold Shift over eligible tooltips to see separate direct, periodic and
+absorb details.
+
 Notes
 -----
 * Power scaling and expected output use exact spell-rank lists for WoW
