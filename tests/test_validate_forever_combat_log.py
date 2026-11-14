@@ -48,6 +48,21 @@ def cast(start, spell, values, interval, *, crit=None, multiplier=1.5,
     return output
 
 
+def direct_heals(spell, gain=0, *, repetitions=20, spread=1, multiplier=1.5,
+                 recipient=RECIPIENT, caster=CASTER, absorbs=0, event="SPELL_HEAL",
+                 start=1, critical_count=None, base=100):
+    critical_count = repetitions if critical_count is None else critical_count
+    rows = []
+    for offset in range(repetitions):
+        roll = base + (offset % 5 - 2) * spread + gain
+        stamp = start + offset
+        rows.append(line(stamp, heal(spell, recipient, roll, absorbs, event=event, caster=caster)))
+        if offset < critical_count:
+            rows.append(line(stamp, heal(spell, recipient, round(roll * multiplier), absorbs, True,
+                                        event=event, caster=caster)))
+    return "".join(rows)
+
+
 class ValidatorTest(unittest.TestCase):
     def run_case(self, spell, low, high, *, build="70938", header=HEADER,
                  high_power="200", same_path=False):
@@ -137,6 +152,89 @@ class ValidatorTest(unittest.TestCase):
         report = self.run_case(spell, "", malformed)
         self.assertEqual(report.returncode, 2)
         self.assertIn("unsupported advanced SPELL_HEAL layout", report.stderr)
+
+    def test_direct_heal_models_with_varying_rolls_for_all_ranks(self):
+        families = (
+            ((635, 639, 647, 1026, 1042, 3472, 10328, 10329, 25292), 143),
+            ((19750, 19939, 19940, 19941, 19942, 19943), 86),
+            ((8004, 8008, 8010, 10466, 10467, 10468), 86),
+        )
+        for spells, gain in families:
+            for spell in spells:
+                with self.subTest(spell=spell):
+                    report = self.run_case(spell, direct_heals(spell), direct_heals(spell, gain))
+                    self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
+                    self.assertIn("PASS Direct healing-power gain", report.stdout)
+                    self.assertIn("PASS Direct crit multiplier", report.stdout)
+                    self.assertNotIn("Tick count", report.stdout)
+
+    def test_direct_heal_gain_and_crit_mismatches_are_independent(self):
+        spell = 635
+        low = direct_heals(spell)
+        wrong_gain = self.run_case(spell, low, direct_heals(spell, 85))
+        self.assertEqual(wrong_gain.returncode, 2, wrong_gain.stdout + wrong_gain.stderr)
+        self.assertIn("FAIL Direct healing-power gain", wrong_gain.stdout)
+        self.assertIn("PASS Direct crit multiplier", wrong_gain.stdout)
+        wrong_crit = self.run_case(spell, low, direct_heals(spell, 143, multiplier=1.8))
+        self.assertEqual(wrong_crit.returncode, 2, wrong_crit.stdout + wrong_crit.stderr)
+        self.assertIn("PASS Direct healing-power gain", wrong_crit.stdout)
+        self.assertIn("FAIL Direct crit multiplier", wrong_crit.stdout)
+
+    def test_direct_heal_quantity_and_precision_are_inconclusive(self):
+        spell = 635
+        for settings in ({"repetitions": 2}, {"spread": 35}):
+            with self.subTest(settings=settings):
+                report = self.run_case(spell, direct_heals(spell, **settings), direct_heals(spell, 143, **settings))
+                self.assertEqual(report.returncode, 3, report.stdout + report.stderr)
+                self.assertIn("INCONCLUSIVE Direct healing-power gain", report.stdout)
+                self.assertIn("INCONCLUSIVE Direct crit multiplier", report.stdout)
+
+    def test_direct_crit_samples_are_compared_at_one_power(self):
+        spell = 635
+        low = direct_heals(spell, critical_count=5)
+        high = direct_heals(spell, 143, critical_count=5)
+        report = self.run_case(spell, low, high)
+        self.assertEqual(report.returncode, 3, report.stdout + report.stderr)
+        self.assertIn("PASS Direct healing-power gain", report.stdout)
+        self.assertIn("INCONCLUSIVE Direct crit multiplier", report.stdout)
+        self.assertEqual(report.stdout.count("20 noncrits, 5 crits"), 2)
+        report = self.run_case(spell, low, direct_heals(spell, 143, critical_count=10))
+        self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
+        self.assertIn("PASS Direct crit multiplier", report.stdout)
+        self.assertIn("20 noncrits, 10 crits", report.stdout)
+
+    def test_direct_heal_ignores_other_identities_absorption_and_periodic_rows(self):
+        spell = 635
+        low = direct_heals(spell)
+        high = direct_heals(spell, 143)
+        high += direct_heals(639, 2, multiplier=1.8, start=22)
+        high += direct_heals(spell, 2, multiplier=1.8, caster=OTHER, start=42)
+        high += direct_heals(spell, 2, multiplier=1.8, recipient=OTHER, start=62)
+        high += direct_heals(spell, 2, multiplier=1.8, absorbs=15, start=82)
+        high += direct_heals(spell, 2, multiplier=1.8, event="SPELL_PERIODIC_HEAL", start=102)
+        high += line(124, heal(spell, RECIPIENT, 0, event="SPELL_HEAL"))
+        report = self.run_case(spell, low, high)
+        self.assertEqual(report.returncode, 0, report.stdout + report.stderr)
+        self.assertIn("PASS Direct healing-power gain", report.stdout)
+        self.assertIn("PASS Direct crit multiplier", report.stdout)
+
+    def test_duplicate_direct_rows_at_one_timestamp_do_not_inflate_sample_counts(self):
+        spell = 635
+        low = direct_heals(spell, repetitions=1) * 10
+        high = direct_heals(spell, 143, repetitions=1) * 10
+        report = self.run_case(spell, low, high)
+        self.assertEqual(report.returncode, 3, report.stdout + report.stderr)
+        self.assertIn("noncrits low 1, high 1", report.stdout)
+        self.assertIn("INCONCLUSIVE Direct crit multiplier", report.stdout)
+
+    def test_direct_crit_cannot_pass_on_an_uninformative_noncrit_mean(self):
+        spell = 635
+        low = direct_heals(spell, base=2, spread=0, multiplier=1)
+        high = direct_heals(spell, 143, base=2, spread=0, critical_count=0)
+        report = self.run_case(spell, low, high)
+        self.assertEqual(report.returncode, 3, report.stdout + report.stderr)
+        self.assertIn("PASS Direct healing-power gain", report.stdout)
+        self.assertIn("INCONCLUSIVE Direct crit multiplier", report.stdout)
 
     def test_tick_count_cadence_gain_and_crit_mismatch_fail(self):
         spell = 408521

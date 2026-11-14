@@ -6,8 +6,9 @@ import csv
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from math import sqrt
 from pathlib import Path
-from statistics import median
+from statistics import mean, median, variance
 
 
 @dataclass(frozen=True)
@@ -18,14 +19,33 @@ class Model:
     coefficient: float
 
 
+@dataclass(frozen=True)
+class DirectModel:
+    name: str
+    coefficient: float
+
+
 WILD_GROWTH = Model("Wild Growth", 7, 1, 0.462)
 RIPTIDE = Model("Riptide", 5, 3, 0.500)
+HOLY_LIGHT = DirectModel("Holy Light", 0.714)
+FLASH_OF_LIGHT = DirectModel("Flash of Light", 0.429)
+LESSER_HEALING_WAVE = DirectModel("Lesser Healing Wave", 0.429)
 MODELS = {
     408120: WILD_GROWTH, 1238214: WILD_GROWTH, 1238215: WILD_GROWTH,
     408521: RIPTIDE, 1239242: RIPTIDE, 1239243: RIPTIDE,
+    635: HOLY_LIGHT, 639: HOLY_LIGHT, 647: HOLY_LIGHT, 1026: HOLY_LIGHT,
+    1042: HOLY_LIGHT, 3472: HOLY_LIGHT, 10328: HOLY_LIGHT, 10329: HOLY_LIGHT,
+    25292: HOLY_LIGHT,
+    19750: FLASH_OF_LIGHT, 19939: FLASH_OF_LIGHT, 19940: FLASH_OF_LIGHT,
+    19941: FLASH_OF_LIGHT, 19942: FLASH_OF_LIGHT, 19943: FLASH_OF_LIGHT,
+    8004: LESSER_HEALING_WAVE, 8008: LESSER_HEALING_WAVE, 8010: LESSER_HEALING_WAVE,
+    10466: LESSER_HEALING_WAVE, 10467: LESSER_HEALING_WAVE, 10468: LESSER_HEALING_WAVE,
 }
 CRIT_MULTIPLIER = 1.5
 TIMING_TOLERANCE = 0.250
+MIN_DIRECT_SAMPLES = 10
+# Two-sided 95% Student t factor at nine degrees of freedom.
+DIRECT_INTERVAL_FACTOR = 2.262
 HEAL_EVENTS = (
     "SPELL_PERIODIC_HEAL", "SPELL_AURA_APPLIED", "SPELL_AURA_REFRESH",
     "SPELL_AURA_REMOVED", "SPELL_AURA_APPLIED_DOSE", "SPELL_AURA_REMOVED_DOSE",
@@ -57,6 +77,8 @@ class Capture:
     casts: list[Aura] = field(default_factory=list)
     discarded: int = 0
     positive_direct_heals: int = 0
+    direct_noncrits: list[int] = field(default_factory=list)
+    direct_crits: list[int] = field(default_factory=list)
 
 
 class InvalidLog(ValueError):
@@ -105,10 +127,12 @@ def parse_heal(fields, when):
 def read_capture(path, spell, caster, recipient):
     capture = Capture()
     model = MODELS[int(spell)]
+    direct_only = isinstance(model, DirectModel)
     heal_events = (*HEAL_EVENTS, "SPELL_HEAL") if model is RIPTIDE else HEAL_EVENTS
     aura = None
     have_header = False
     last_time = None
+    direct_rows_at_timestamp = set()
 
     def finish():
         nonlocal aura
@@ -140,6 +164,8 @@ def read_capture(path, spell, caster, recipient):
                 event = fields[0]
                 if last_time is not None and when < last_time:
                     raise InvalidLog("timestamps move backwards")
+                if direct_only and when != last_time:
+                    direct_rows_at_timestamp.clear()
                 last_time = when
                 if event == "COMBAT_LOG_VERSION":
                     check_header(fields)
@@ -150,6 +176,18 @@ def read_capture(path, spell, caster, recipient):
                     continue
                 if not have_header:
                     raise InvalidLog("missing Forever advanced combat-log header before events")
+                if direct_only:
+                    if (event == "SPELL_HEAL" and fields[1] == caster
+                            and fields[5] == recipient and fields[9] == spell):
+                        key = tuple(fields)
+                        if key in direct_rows_at_timestamp:
+                            continue
+                        direct_rows_at_timestamp.add(key)
+                        heal = parse_heal(fields, when)
+                        if heal.amount > 0 and not heal.absorbed:
+                            samples = capture.direct_crits if heal.critical else capture.direct_noncrits
+                            samples.append(heal.amount)
+                    continue
                 died = event in {"UNIT_DIED", "UNIT_DESTROYED"} and fields[5] in {caster, recipient}
                 removed = (event in {"SPELL_DISPEL", "SPELL_STOLEN"} and fields[5] == recipient
                            and fields[12] == spell)
@@ -278,6 +316,58 @@ def check_initial_heal(low, high, captures):
     return 0, "no positive SPELL_HEAL events in either capture"
 
 
+def interval_status(lower, upper, expected, tolerance):
+    if lower >= expected - tolerance and upper <= expected + tolerance:
+        return 0
+    if upper < expected - tolerance or lower > expected + tolerance:
+        return 2
+    return 3
+
+
+def direct_interval(baseline, comparison, multiplier=1):
+    center = mean(comparison) - multiplier * mean(baseline)
+    variance_of_difference = variance(comparison) / len(comparison)
+    variance_of_difference += multiplier ** 2 * variance(baseline) / len(baseline)
+    half_width = DIRECT_INTERVAL_FACTOR * sqrt(variance_of_difference)
+    return center, center - half_width, center + half_width
+
+
+def direct_gain_check(low, high, model, power_delta):
+    counts = f"noncrits low {len(low)}, high {len(high)}"
+    if min(len(low), len(high)) < MIN_DIRECT_SAMPLES:
+        return 3, f"need at least {MIN_DIRECT_SAMPLES} noncrits at each power ({counts})"
+    expected = power_delta * model.coefficient
+    tolerance = max(1, expected * 0.10)
+    center, lower, upper = direct_interval(low, high)
+    status = interval_status(lower, upper, expected, tolerance)
+    return status, (
+        f"observed {center:.2f} healing gain, approx. 95% interval [{lower:.2f}, {upper:.2f}], "
+        f"expected {expected:.2f} ± {tolerance:.2f} ({counts})"
+    )
+
+
+def direct_crit_check(captures):
+    statuses = []
+    observations = []
+    for label, capture in zip(("low", "high"), captures):
+        normal, crit = capture.direct_noncrits, capture.direct_crits
+        ratio = f"{mean(crit) / mean(normal):.3f}×" if normal and crit else "unavailable"
+        description = f"{label} {ratio} ({len(normal)} noncrits, {len(crit)} crits)"
+        if min(len(normal), len(crit)) < MIN_DIRECT_SAMPLES:
+            observations.append(f"{description}, need {MIN_DIRECT_SAMPLES} of each")
+            continue
+        normal_mean = mean(normal)
+        if normal_mean <= 2:
+            observations.append(f"{description}, noncrit mean too small to resolve the multiplier")
+            continue
+        tolerance = max(1, normal_mean * 0.05)
+        _, lower, upper = direct_interval(normal, crit, CRIT_MULTIPLIER)
+        statuses.append(interval_status(lower, upper, 0, tolerance))
+        observations.append(f"{description}, difference interval [{lower:.2f}, {upper:.2f}] healing vs. ±{tolerance:.2f}")
+    status = 2 if 2 in statuses else max(statuses, default=3)
+    return status, f"expected {CRIT_MULTIPLIER:g}×. " + ". ".join(observations)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build", type=int, choices=[70938], required=True,
@@ -307,25 +397,32 @@ def main():
             reason = str(error) if isinstance(error, InvalidLog) else "file is unreadable as UTF-8 text"
             parser.error(f"{label} capture: {reason}")
 
-    low, low_problems = select_complete(captures[0], model)
-    high, high_problems = select_complete(captures[1], model)
-    problems = low_problems + high_problems
-    if problems:
-        schedule = (2, f"{len(problems)} mismatched casts. First mismatch: {problems[0]}")
-    elif not low or not high:
-        schedule = (3, "need a complete aura at each healing-power value")
-    else:
-        schedule = (0, f"{model.ticks} ticks per recipient, {model.interval} s apart")
-    checks = [
-        ("Tick count and timing", schedule),
-        ("Healing-power gain", gain_check(low, high, model, power_delta)),
-        ("Periodic crit multiplier", crit_check(low, high, model)),
-    ]
-    if model is RIPTIDE:
-        checks.append(("Initial heal absence", check_initial_heal(low, high, captures)))
     print(f"{model.name} ({spell}), declared Forever build {args.build}")
-    print(f"Complete matching casts: low {len(low)}, high {len(high)}. "
-          f"Incomplete or ambiguous casts skipped: low {captures[0].discarded}, high {captures[1].discarded}.")
+    if isinstance(model, DirectModel):
+        low, high = (capture.direct_noncrits for capture in captures)
+        checks = [
+            ("Direct healing-power gain", direct_gain_check(low, high, model, power_delta)),
+            ("Direct crit multiplier", direct_crit_check(captures)),
+        ]
+    else:
+        low, low_problems = select_complete(captures[0], model)
+        high, high_problems = select_complete(captures[1], model)
+        problems = low_problems + high_problems
+        if problems:
+            schedule = (2, f"{len(problems)} mismatched casts. First mismatch: {problems[0]}")
+        elif not low or not high:
+            schedule = (3, "need a complete aura at each healing-power value")
+        else:
+            schedule = (0, f"{model.ticks} ticks per recipient, {model.interval} s apart")
+        checks = [
+            ("Tick count and timing", schedule),
+            ("Healing-power gain", gain_check(low, high, model, power_delta)),
+            ("Periodic crit multiplier", crit_check(low, high, model)),
+        ]
+        if model is RIPTIDE:
+            checks.append(("Initial heal absence", check_initial_heal(low, high, captures)))
+        print(f"Complete matching casts: low {len(low)}, high {len(high)}. "
+              f"Incomplete or ambiguous casts skipped: low {captures[0].discarded}, high {captures[1].discarded}.")
     status_names = {0: "PASS", 2: "FAIL", 3: "INCONCLUSIVE"}
     for label, (status, message) in checks:
         print(f"{status_names[status]} {label}: {message}")
