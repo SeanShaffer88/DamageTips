@@ -16,6 +16,13 @@ body:
       placeholder: Healing Touch, Rank 2
     validations:
       required: true
+  - type: textarea
+    id: expected-output-report
+    attributes:
+      label: Expected DPS or HPS report
+      description: 'If an Expected DPS or HPS line is missing, run `/dtips why <spellID>` for that rank. Press Ctrl+C to copy the report from the dialog and paste it here if available.'
+    validations:
+      required: false
   - type: dropdown
     id: tooltip-location
     attributes:
