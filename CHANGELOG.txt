@@ -1,3 +1,8 @@
+1.6.3
+- Run the Lua and Python test suites in GitHub Actions for pull requests.
+- Verify each version tag's install ZIP against the tagged files and TOC
+  version.
+
 1.6.2
 - Add Wild Growth ranks 1-3 to the power scaling and Expected HPS lines
   on WoW Forever build 70938. Values apply to each recipient.
