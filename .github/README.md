@@ -16,6 +16,7 @@ DamageTips adds DPS, HPS, absorb amounts, and mana costs to action bar and spell
 - In **Calculation**, choose whether to include periodic effects. Mixed spells keep their direct damage or healing when you turn periodic effects off.
 - In **Advanced**, import or export settings and toggle the minimap button.
 - Run `/dtips status` for the detected build, verified spell model count, and estimate settings. Run `/dtips help` for more commands.
+- In the unreleased source, run `/dtips why <spellID>` for a learned spell rank to check whether DamageTips can calculate Expected DPS or HPS. Copy the selected report with **Ctrl+C**, or find it in local chat when the dialog is unavailable.
 
 ## Screenshots
 

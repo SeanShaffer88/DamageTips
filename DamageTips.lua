@@ -485,6 +485,14 @@ local function GetBaseTimings(spellID)
     return ReadMilliseconds(cdMS), ReadMilliseconds(gcdMS)
 end
 
+local function GetBaseCycle(spellID)
+    local cd, gcd = GetBaseTimings(spellID)
+    local cast = GetCastTime(spellID)
+    if cd and gcd and cast then
+        return math_max(cast, cd, DB.gcdFloor and gcd or 0)
+    end
+end
+
 -- Use a public description, or the client's explicitly typed description
 -- lines, before considering a load request. Never parse titles, cast/cost
 -- lines, or FontString:GetText().
@@ -803,6 +811,24 @@ end)
 ----------------------------------------------------------------------
 -- Entry computation
 ----------------------------------------------------------------------
+local function ActiveModeledEffect(parsed, model)
+    if model and DB.includeDoT and parsed.effect then
+        return parsed.effect, (parsed.damage or parsed.healing).periodic
+    end
+end
+
+local function ResolveExpectedAmount(parsed, model, effect)
+    local amount = Estimates.ResolveExpectedAmount(parsed, model)
+    if amount == 0 and not effect then return nil end
+    return amount
+end
+
+local function GetExpectedCycle(baseTime, effect)
+    if not baseTime then return nil end
+    local time = math_max(baseTime, effect and effect.duration or 0)
+    if time > 0 then return time end
+end
+
 -- A comparison probe never chains ranks or calculates healing throughput.
 -- Include healing totals only if the current tooltip needs that comparison.
 local function Compute(spellID, light, estimate, powerModel, source, readNextHealing)
@@ -865,18 +891,13 @@ local function Compute(spellID, light, estimate, powerModel, source, readNextHea
 
     local damageTiming = t.total and t.total > 0 and (t.baselineDamage or wantsSustain)
     local healingTiming = not light and t.htotal and t.htotal > 0 and (DB.showHealing or wantsSustain)
-    local effect = t.powerModel and DB.includeDoT and parsed.effect or nil
-    if effect then
-        t.tickTotal = (damage or healing).periodic
-    end
-    local expectedAmount = wantsExpected and Estimates.ResolveExpectedAmount(parsed, t.powerModel)
-    if expectedAmount == 0 and not effect then expectedAmount = nil end
+    local effect, tickTotal = ActiveModeledEffect(parsed, t.powerModel)
+    t.tickTotal = tickTotal
+    local expectedAmount = wantsExpected and ResolveExpectedAmount(parsed, t.powerModel, effect)
 
     if damageTiming or healingTiming or expectedAmount then
-        local cd, gcd = GetBaseTimings(spellID)
-        local cast = GetCastTime(spellID)
-        if cd and gcd and cast then
-            local baseTime = math_max(cast, cd, DB.gcdFloor and gcd or 0)
+        local baseTime = GetBaseCycle(spellID)
+        if baseTime then
             if damageTiming then
                 local time = math_max(baseTime, t.dotDur or 0)
                 if time > 0 then t.time, t.dps = time, t.total / time end
@@ -887,8 +908,8 @@ local function Compute(spellID, light, estimate, powerModel, source, readNextHea
             end
             if wantsSustain then t.sustainCycle = math_max(t.time or 0, t.htime or 0) end
             if expectedAmount then
-                local time = math_max(baseTime, effect and effect.duration or 0)
-                if time > 0 then
+                local time = GetExpectedCycle(baseTime, effect)
+                if time then
                     t.expectedAmount, t.expectedCycle, t.expectedEffect = expectedAmount, time, effect
                 end
             end
@@ -1905,10 +1926,112 @@ local function ShowStatus()
         .. ", expected DPS/HPS " .. OnOff(DB.showExpectedThroughput) .. ".")
 end
 
+local function ExplainExpected(spellID, ruleID, buildStatus)
+    if not DB.showExpectedThroughput then
+        return "Expected DPS and HPS is off.", "Enable it in Lines."
+    end
+    local rule = DB.spellRules[ruleID]
+    if rule == "hide" then return "This rank is hidden.", "Use /dtips show " .. ruleID .. "." end
+    if type(rule) == "number" then
+        return "This rank uses pinned damage.", "Use /dtips show " .. ruleID .. " to restore normal parsing."
+    end
+    if not DB.showActionBar and not DB.showSpellbook then
+        return "Action bar and spellbook tooltips are off.", "Enable a tooltip location in Lines."
+    end
+    if buildStatus == "unreadable" then return "Client build information is unavailable." end
+    if buildStatus ~= "verified" then return "This client build is unverified." end
+    local model = Estimates.GetSpellModel(spellID)
+    if not model then return "This rank has no verified model on this build." end
+    if not model.expected then return "This rank supports scaling only." end
+    local fromAction = not DB.showSpellbook
+    if not Estimates.IsKnownPlayerSpell(spellID, fromAction) then
+        if fromAction then
+            return "The action bar could not confirm an unambiguous player rank.",
+                "Check the learned rank or enable spellbook tooltips."
+        end
+        return "The player spellbook could not confirm this rank.", "Use the ID of a learned rank."
+    end
+    if not Estimates.SupportsSpellTextLocale() then return "Estimates require English spell descriptions." end
+
+    local text, secret, loaded = GetSpellText(spellID, false)
+    if secret then return "The spell description is restricted." end
+    if not loaded then
+        return "The spell description is unavailable.", "Hover the spell in the spellbook and try again."
+    end
+    -- Parse directly so a report cannot replace a hover cache entry.
+    local parsed = Estimates.ParseComponents(text, model, true)
+    local effect, ticks = ActiveModeledEffect(parsed, model)
+    if not DB.includeDoT and parsed.effect and parsed.expectedAmount == 0 then
+        return "Periodic effects are off for this periodic-only rank.", "Enable Include Periodic Effects."
+    end
+    local amount = ResolveExpectedAmount(parsed, model, effect)
+    if not amount then
+        if parsed.attackPowerBase then return "Required combat stats are unavailable." end
+        return "The spell description does not match the estimate model."
+    end
+
+    local cycle = GetExpectedCycle(GetBaseCycle(spellID), effect)
+    if not cycle then return "Spell timing is unavailable." end
+    if not Estimates.GetExpectedRate(model.expected, amount, cycle, effect, ticks, model) then
+        return "Required combat stats are unavailable."
+    end
+    if model.expected == "healing" then return "Expected HPS is available." end
+    if model.expected == "landed" then return "DPS on landed hits is available." end
+    return "Expected DPS is available."
+end
+
+local REPORT_DIALOG = "DAMAGETIPS_ESTIMATE_REPORT"
+
+local function SelectReport(dialog, report)
+    if (dialog.IsForbidden and dialog:IsForbidden()) or not dialog.GetEditBox then return false end
+    local edit = dialog:GetEditBox()
+    if IsSecret(edit) or not edit or (edit.IsForbidden and edit:IsForbidden()) then return false end
+    edit:SetText(report)
+    edit:SetFocus()
+    edit:HighlightText()
+    return true
+end
+
+local function TryShowEstimateReport(report)
+    if not (InCombatLockdown and StaticPopupDialogs and StaticPopup_Show) then return false end
+    local checked, locked = pcall(InCombatLockdown)
+    if not checked or IsSecret(locked) or locked ~= false then return false end
+    if not StaticPopupDialogs[REPORT_DIALOG] then
+        StaticPopupDialogs[REPORT_DIALOG] = {
+            text = "DamageTips estimate report\nPress Ctrl+C to copy.",
+            button1 = CLOSE or "Close",
+            hasEditBox = true,
+            maxLetters = 0,
+            editBoxWidth = 320,
+            timeout = 0,
+            hideOnEscape = true,
+            EditBoxOnEscapePressed = function(edit) edit:GetParent():Hide() end,
+        }
+    end
+    local shown, dialog = pcall(StaticPopup_Show, REPORT_DIALOG)
+    if not shown or IsSecret(dialog) or not dialog then return false end
+    local ok, selected = pcall(SelectReport, dialog, report)
+    if ok and selected then return true end
+    if dialog.Hide then pcall(dialog.Hide, dialog) end
+    return false
+end
+
+local function ShowEstimateReport(argument)
+    local id = argument:match("^%d+$") and SpellIDKey(argument)
+    if not id then Print("usage: /dtips why <spellID>") return end
+    local status, _, build = Estimates.GetModelBuildStatus()
+    local reason, action = ExplainExpected(tonumber(id), id, status)
+    local report = string_format("DamageTips | Build %s | Spell ID %s | Reason: %s",
+        build or "unavailable", id, reason)
+    if action then report = report .. " | Action: " .. action end
+    if not TryShowEstimateReport(report) then print(report) end
+end
+
 local function ShowHelp()
     Print("commands:")
     print("  |cffffd100/damagetips|r - open the settings window")
     print("  |cffffd100/dtips status|r - show client and spell model compatibility")
+    print("  |cffffd100/dtips why <spellID>|r - explain expected DPS or HPS for a rank")
     print("  |cffffd100/damagetips dps|r - toggle DPS (" .. OnOff(DB.showDPS) .. ")")
     print("  |cffffd100/damagetips dpm|r - toggle DPM (" .. OnOff(DB.showDPM) .. ")")
     print("  |cffffd100/damagetips mana|r - toggle mana cost line (" .. OnOff(DB.showMana) .. ")")
@@ -1952,6 +2075,8 @@ SlashCmdList["DAMAGETIPS"] = function(msg)
         ShowHelp()
     elseif cmd == "status" then
         ShowStatus()
+    elseif cmd == "why" then
+        ShowEstimateReport(rest)
     elseif toggle then
         SetOption(toggle.key, not DB[toggle.key])
         Print(toggle.label .. " " .. OnOff(DB[toggle.key]))
