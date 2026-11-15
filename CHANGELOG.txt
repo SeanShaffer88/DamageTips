@@ -1,3 +1,10 @@
+1.6.4
+- Add /dtips why <spellID> to explain whether a learned spell rank can
+  show Expected DPS or HPS. Copy the selected report with Ctrl+C or read
+  it in local chat when the dialog is unavailable.
+- Retain the verified install ZIP and its SHA-256 checksum in GitHub
+  Actions for version tags and manual preview runs.
+
 1.6.3
 - Run the Lua and Python test suites in GitHub Actions for pull requests.
 - Verify each version tag's install ZIP against the tagged files and TOC
