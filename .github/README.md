@@ -2,7 +2,7 @@
 
 DamageTips adds DPS, HPS, absorb amounts, and mana costs to action bar and spellbook tooltips in **World of Warcraft: Forever**. It can also show damage or healing per mana, compare spell ranks, and estimate how many casts your current mana can sustain.
 
-**[Download DamageTips 1.6.2 ZIP](https://github.com/SeanShaffer88/DamageTips/releases/download/v1.6.2/DamageTips-1.6.2.zip)** · [Latest release and notes](https://github.com/SeanShaffer88/DamageTips/releases/latest)
+**[Download DamageTips 1.6.3 ZIP](https://github.com/SeanShaffer88/DamageTips/releases/download/v1.6.3/DamageTips-1.6.3.zip)** · [Latest release and notes](https://github.com/SeanShaffer88/DamageTips/releases/latest)
 
 ## Install
 
@@ -47,6 +47,10 @@ Click either screenshot to view it at full size.
 DamageTips targets WoW Forever 1.60.1 (Interface 16001). **Spell and attack power scaling** and **Expected DPS and HPS** are off by default and appear only for supported spell ranks on builds **70888** and **70938**. Turn them on in **Lines**.
 
 DamageTips parses spell amounts from English descriptions. On other locales, information supplied by the game, such as mana cost, can still appear when available.
+
+## What's new in 1.6.3
+
+- GitHub Actions runs the Lua and Python suites and checks the install ZIP on version tags.
 
 ## What's new in 1.6.2
 
