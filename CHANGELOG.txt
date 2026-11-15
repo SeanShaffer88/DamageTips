@@ -1,3 +1,7 @@
+1.6.5
+- Add an optional Expected DPS or HPS report field to the GitHub bug form
+  for output from /dtips why <spellID>.
+
 1.6.4
 - Add /dtips why <spellID> to explain whether a learned spell rank can
   show Expected DPS or HPS. Copy the selected report with Ctrl+C or read
