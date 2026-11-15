@@ -2,7 +2,7 @@
 
 DamageTips adds DPS, HPS, absorb amounts, and mana costs to action bar and spellbook tooltips in **World of Warcraft: Forever**. It can also show damage or healing per mana, compare spell ranks, and estimate how many casts your current mana can sustain.
 
-**[Download DamageTips 1.6.3 ZIP](https://github.com/SeanShaffer88/DamageTips/releases/download/v1.6.3/DamageTips-1.6.3.zip)** · [Latest release and notes](https://github.com/SeanShaffer88/DamageTips/releases/latest)
+**[Download DamageTips 1.6.4 ZIP](https://github.com/SeanShaffer88/DamageTips/releases/download/v1.6.4/DamageTips-1.6.4.zip)** · [Latest release and notes](https://github.com/SeanShaffer88/DamageTips/releases/latest)
 
 ## Install
 
@@ -16,7 +16,7 @@ DamageTips adds DPS, HPS, absorb amounts, and mana costs to action bar and spell
 - In **Calculation**, choose whether to include periodic effects. Mixed spells keep their direct damage or healing when you turn periodic effects off.
 - In **Advanced**, import or export settings and toggle the minimap button.
 - Run `/dtips status` for the detected build, verified spell model count, and estimate settings. Run `/dtips help` for more commands.
-- In the unreleased source, run `/dtips why <spellID>` for a learned spell rank to check whether DamageTips can calculate Expected DPS or HPS. Copy the selected report with **Ctrl+C**, or find it in local chat when the dialog is unavailable.
+- Run `/dtips why <spellID>` for a learned spell rank to check whether DamageTips can calculate Expected DPS or HPS. Copy the selected report with **Ctrl+C**, or find it in local chat when the dialog is unavailable.
 
 ## Screenshots
 
@@ -48,6 +48,11 @@ Click either screenshot to view it at full size.
 DamageTips targets WoW Forever 1.60.1 (Interface 16001). **Spell and attack power scaling** and **Expected DPS and HPS** are off by default and appear only for supported spell ranks on builds **70888** and **70938**. Turn them on in **Lines**.
 
 DamageTips parses spell amounts from English descriptions. On other locales, information supplied by the game, such as mana cost, can still appear when available.
+
+## What's new in 1.6.4
+
+- `/dtips why` explains estimate availability for a specific spell rank and gives a next step when one is available.
+- Release checks save the verified install ZIP and its SHA-256 checksum. [Release guide](../docs/release.md).
 
 ## What's new in 1.6.3
 
