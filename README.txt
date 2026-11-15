@@ -68,6 +68,10 @@ Commands
 /damagetips         Open the settings window
 /damagetips help    Show the command list
 /dtips status       Show the client build, model coverage and estimate settings
+/dtips why <spellID>
+                    Explain whether Expected DPS or HPS can be calculated
+                    for a learned rank. Use Ctrl+C to copy the report, or
+                    read it in local chat when the dialog is unavailable.
 /damagetips dps     Toggle DPS
 /damagetips dpm     Toggle DPM
 /damagetips mana    Toggle the mana cost line

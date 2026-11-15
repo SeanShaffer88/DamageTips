@@ -305,6 +305,10 @@ end
 local SCHOOL = { physical = true, holy = true, fire = true, nature = true, frost = true, shadow = true, arcane = true }
 local locale = GetLocale and GetLocale() or "enUS"
 
+function Estimates.SupportsSpellTextLocale()
+    return locale == "enUS" or locale == "enGB"
+end
+
 local function RemoveMatched(text, first, last)
     return first and (text:sub(1, first - 1) .. " " .. text:sub(last + 1)) or text
 end
@@ -410,7 +414,7 @@ end
 -- grammar supplies shared amounts, and generic text never borrows a schedule.
 function Estimates.ParseComponents(text, model, wantsExpected)
     local result = { status = "unsupported" }
-    if locale ~= "enUS" and locale ~= "enGB" then return result end
+    if not Estimates.SupportsSpellTextLocale() then return result end
     if IsSecret(text) or type(text) ~= "string" or text == "" then return result end
     text = text:lower():gsub("–", "-"):gsub("—", "-"):gsub("%s+", " ")
     local kind = model and model.expected
