@@ -183,6 +183,23 @@ post({}, data)
 post(secret, data)
 expect(#lines == 0 and reads == sourceReads, "foreign and secret tooltips are skipped without resolving a source")
 
+clear()
+primary = info("GetAction", nil, data)
+processing = primary
+local reads = sourceReads
+post(GameTooltip, data)
+expect(#lines == 0 and sourceReads == reads, "missing getter arguments are ignored")
+clear()
+primary = info("GetAction", {}, data)
+processing = primary
+post(GameTooltip, data)
+expect(#lines == 0 and sourceReads == reads, "missing action slot is ignored")
+clear()
+primary = info("GetAction", { 1 }, data)
+processing = primary
+post(GameTooltip, { type = 1, dataInstanceID = 21 })
+expect(#lines == 0 and sourceReads == reads, "post-call data must match the primary tooltip data")
+
 processing, primary = secret, secret
 post(GameTooltip, data)
 expect(#lines == 0, "secret info objects are skipped unopened")

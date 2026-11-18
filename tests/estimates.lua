@@ -221,6 +221,26 @@ local baselineCostCalls = costCalls
 hover()
 expect(costCalls == baselineCostCalls + 1, "baseline hover rereads live mana cost")
 
+-- Missing timing values should suppress rates, not break readable amount lines.
+local savedTimings = { castTime = castTime, cooldown = cooldown, gcd = gcd }
+command("import DT1;showDPC=1;showRange=1")
+local missingTimingCases = {
+    { "cast time", function() castTime = nil end },
+    { "base cooldown", function() cooldown = nil end },
+    { "global cooldown", function() gcd = nil end },
+}
+for _, case in ipairs(missingTimingCases) do
+    castTime, cooldown, gcd = savedTimings.castTime, savedTimings.cooldown, savedTimings.gcd
+    case[2]()
+    hover()
+    expect(not has("DPS:") and not has("DPM:") and has("Damage per cast: 100")
+        and has("90-110"), case[1] .. " unavailable keeps amounts but omits rates")
+end
+castTime, cooldown, gcd = savedTimings.castTime, savedTimings.cooldown, savedTimings.gcd
+command("import DT1;showDPC=0;showRange=0")
+hover()
+expect(has("DPS: 50.0"), "zero base cooldown remains a valid timing input")
+
 command("")
 local config = assert(DamageTipsConfigFrame)
 local sustainBox, casterBox = config.checks.showManaSustain, config.checks.showCasterStats
