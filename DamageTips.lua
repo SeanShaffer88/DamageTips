@@ -583,8 +583,7 @@ local function RebuildRankIndex()
                                 names[name] = group
                             end
                             local ranks, ids = group.byRank, group.byID
-                            local rank = not IsSecret(subName) and type(subName) == "string"
-                                and tonumber(subName:match("^Rank (%d+)$"))
+                            local rank = Estimates.ReadSpellRank(subName)
                             if IsWholeNumber(rank, 1) and IsWholeNumber(id, 1) then
                                 if ids[id] and ids[id] ~= rank then group.incomplete = true end
                                 ids[id] = rank
@@ -1982,7 +1981,7 @@ local function ExplainExpected(spellID, ruleID, buildStatus)
         end
         return "The player spellbook could not confirm this rank.", "Use the ID of a learned rank."
     end
-    if not Estimates.SupportsSpellTextLocale() then return "Estimates require English spell descriptions." end
+    if not Estimates.SupportsSpellTextLocale() then return "Estimates require supported English or German spell descriptions." end
 
     local text, secret, loaded = GetSpellText(spellID, false)
     if secret then return "The spell description is restricted." end

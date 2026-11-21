@@ -306,7 +306,123 @@ local SCHOOL = { physical = true, holy = true, fire = true, nature = true, frost
 local locale = GetLocale and GetLocale() or "enUS"
 
 function Estimates.SupportsSpellTextLocale()
-    return locale == "enUS" or locale == "enGB"
+    return locale == "enUS" or locale == "enGB" or locale == "deDE"
+end
+
+function Estimates.ReadSpellRank(text)
+    if IsSecret(text) or type(text) ~= "string" then return nil end
+    if locale == "deDE" then return tonumber(text:match("^Rang (%d+)$")) end
+    if locale == "enUS" or locale == "enGB" then return tonumber(text:match("^Rank (%d+)$")) end
+end
+
+-- Original deDE fixtures describe this deliberately bounded grammar. It does
+-- not translate arbitrary text or expand exact-build coefficient coverage.
+local ReadGerman
+do
+    local amount = "([%d%., ]+)"
+    local seconds = "([%d,]+) (sek%a*%.?)"
+    local schools = { feuer = "fire", frost = "frost", schatten = "shadow", natur = "nature",
+        arkan = "arcane", heilig = "holy", ["körperlichen"] = "physical" }
+    local units = { sek = true, ["sek."] = true, sekunde = true, sekunden = true }
+    local function number(text)
+        if not text then return nil end
+        text = text:gsub("^ +", ""):gsub(" +$", ""):gsub(" ", ".")
+        local whole, decimal = text:match("^(.-),(%d+)$")
+        whole = whole or text
+        if whole:find(".", 1, true) then
+            local head, groups = whole:match("^(%d%d?%d?)(%..+)$")
+            if not head or groups:gsub("%.%d%d%d", "") ~= "" then return nil end
+            whole = whole:gsub("%.", "")
+        elseif not whole:match("^%d+$") then return nil end
+        local value = tonumber(whole .. (decimal and "." .. decimal or ""))
+        return IsNonnegative(value) and value or nil
+    end
+    local function range(text)
+        if not text then return nil end
+        local lo, hi = text:match("^(.-) bis (.-)$")
+        if not lo then lo, hi = text:match("^(.-) *%- *(.-)$") end
+        if not lo then local value = number(text); return value, value end
+        lo, hi = number(lo), number(hi)
+        if lo and hi and lo <= hi then return lo, hi end
+    end
+    local function duration(text, unit)
+        local value = units[unit] and number(text)
+        return value and value > 0 and value or nil
+    end
+    local rangeAmount = "([%d%., bis%-]+)"
+    function ReadGerman(text, model, wantsExpected)
+        local result = { status = "unsupported" }
+        text = text:gsub("Ä", "ä"):gsub("Ö", "ö"):gsub("Ü", "ü"):lower()
+            :gsub("\194\160", " "):gsub("\226\128\175", " "):gsub("–", "-"):gsub("—", "-")
+            :gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+        local value, school, low, high, total, span, unit, interval, intervalUnit
+        local heal = text:match("^heilt ein verbündetes ziel um " .. rangeAmount .. " gesundheit%.$")
+            or text:match("^heilt ein befreundetes ziel um " .. rangeAmount .. " gesundheit%.$")
+            or text:match("^stellt beim ziel " .. rangeAmount .. " gesundheit wieder her%.$")
+        if heal then
+            low, high = range(heal)
+            if low then result.healing = Components(low, high) end
+        else
+            value, school = text:match("^verursacht " .. rangeAmount .. " ([^ ]+)schaden%.$")
+            if not value then value, school = text:match("^fügt dem ziel " .. rangeAmount .. " ([^ ]+)schaden zu%.$") end
+            low, high = range(value)
+            if low and schools[school] then result.damage = Components(low, high, nil, nil, schools[school]) end
+        end
+        value = text:match("^absorbiert " .. amount .. " schaden%.$")
+            or text:match("^absorbiert " .. amount .. " schaden%. hält " .. "[%d,]+ sek%. lang an%.$")
+        if value then result.absorb = number(value) end
+        span, unit, total = text:match("^heilt das ziel im verlauf von " .. seconds .. " um insgesamt " .. amount .. " gesundheit%.$")
+        if total then
+            total, span = number(total), duration(span, unit)
+            if total and span then result.healing = Components(nil, nil, total, span) end
+        end
+        span, unit, total, school = text:match("^verursacht im verlauf von " .. seconds .. " insgesamt " .. amount .. " ([^ ]+)schaden%.$")
+        if total then
+            total, span = number(total), duration(span, unit)
+            if total and span and schools[school] then result.damage = Components(nil, nil, total, span, schools[school]) end
+        end
+        value, span, unit, total = text:match("^heilt ein verbündetes ziel um " .. rangeAmount
+            .. " gesundheit und im verlauf von " .. seconds .. " um weitere " .. amount .. " gesundheit%.$")
+        if value then
+            low, high = range(value)
+            total, span = number(total), duration(span, unit)
+            if low and total and span then result.healing = Components(low, high, total, span) end
+        end
+        value, school, span, unit, total = text:match("^verursacht " .. rangeAmount
+            .. " ([^ ]+)schaden und im verlauf von " .. seconds .. " zusätzlich " .. amount .. " %2schaden%.$")
+        if value then
+            low, high = range(value)
+            total, span = number(total), duration(span, unit)
+            if low and total and span and schools[school] then result.damage = Components(low, high, total, span, schools[school]) end
+        end
+        interval, intervalUnit, value, school, span, unit = text:match("^verursacht alle " .. seconds .. " " .. amount
+            .. " ([^ ]+)schaden%. hält " .. seconds .. " lang an%.$")
+        if value then
+            interval, span, value = duration(interval, intervalUnit), duration(span, unit), number(value)
+            if value and interval and span and span % interval == 0 and schools[school] then
+                result.damage = Components(nil, nil, value * span / interval, span, schools[school])
+            end
+        end
+        local parts = result.healing or result.damage
+        if parts and (not IsNonnegative(parts.direct) or not IsNonnegative(parts.periodic)) then return { status = "unsupported" } end
+        if parts then
+            local effect = model and model.periodic
+            local mixed = effect and ({ burn = true, holyFire = true, fireball = true, regrowth = true })[effect.grammar]
+            local whole = effect and ({ corruption = true, pain = true, rejuvenation = true, renew = true, serpentSting = true, mindFlay = true })[effect.grammar]
+            if effect and ((mixed and parts.low ~= nil) or (whole and parts.low == nil) or (effect.grammar == "missiles" and interval))
+                and parts.duration == effect.duration and parts.periodic > 0
+                and (not model.school or model.school == parts.school)
+                and ((model.expected == "healing") == (result.healing ~= nil))
+                and (effect.grammar ~= "missiles" or interval == effect.interval) then
+                result.effect, result.expectedAmount = effect, wantsExpected and parts.direct
+            elseif wantsExpected and model and not effect and parts.duration == nil
+                and ((model.expected == "healing" and result.healing) or (model.expected == "spell" and result.damage and parts.school == model.school)) then
+                result.expectedAmount = parts.direct
+            end
+        end
+        if parts or result.absorb then result.status = "parsed" end
+        return result
+    end
 end
 
 local function RemoveMatched(text, first, last)
@@ -416,6 +532,7 @@ function Estimates.ParseComponents(text, model, wantsExpected)
     local result = { status = "unsupported" }
     if not Estimates.SupportsSpellTextLocale() then return result end
     if IsSecret(text) or type(text) ~= "string" or text == "" then return result end
+    if locale == "deDE" then return ReadGerman(text, model, wantsExpected) end
     text = text:lower():gsub("–", "-"):gsub("—", "-"):gsub("%s+", " ")
     local kind = model and model.expected
     if model and model.periodic then
