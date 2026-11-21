@@ -34,6 +34,8 @@ jobs:
           for suite in tests/*.lua; do
             lua5.1 "$suite" .
           done
+      - name: Check exact-build certification inventory
+        run: python3 -B tools/validate_certification.py --lua lua5.1
       - name: Run Python tests
         run: python3 -B -m unittest discover -s tests
       - name: Verify install ZIP

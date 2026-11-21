@@ -1,0 +1,1846 @@
+{
+  "schemaVersion": 1,
+  "hashFormat": "sha256-text-lf",
+  "builds": [
+    {
+      "version": "1.60.1",
+      "build": "70888",
+      "interface": 16001,
+      "ranks": [
+        {
+          "spellID": 116,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 133,
+          "mode": "spell"
+        },
+        {
+          "spellID": 139,
+          "mode": "healing"
+        },
+        {
+          "spellID": 143,
+          "mode": "spell"
+        },
+        {
+          "spellID": 145,
+          "mode": "spell"
+        },
+        {
+          "spellID": 172,
+          "mode": "spell"
+        },
+        {
+          "spellID": 205,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 331,
+          "mode": "healing"
+        },
+        {
+          "spellID": 332,
+          "mode": "healing"
+        },
+        {
+          "spellID": 348,
+          "mode": "spell"
+        },
+        {
+          "spellID": 403,
+          "mode": "spell"
+        },
+        {
+          "spellID": 529,
+          "mode": "spell"
+        },
+        {
+          "spellID": 547,
+          "mode": "healing"
+        },
+        {
+          "spellID": 548,
+          "mode": "spell"
+        },
+        {
+          "spellID": 589,
+          "mode": "spell"
+        },
+        {
+          "spellID": 594,
+          "mode": "spell"
+        },
+        {
+          "spellID": 686,
+          "mode": "spell"
+        },
+        {
+          "spellID": 695,
+          "mode": "spell"
+        },
+        {
+          "spellID": 705,
+          "mode": "spell"
+        },
+        {
+          "spellID": 707,
+          "mode": "spell"
+        },
+        {
+          "spellID": 774,
+          "mode": "healing"
+        },
+        {
+          "spellID": 837,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 913,
+          "mode": "healing"
+        },
+        {
+          "spellID": 915,
+          "mode": "spell"
+        },
+        {
+          "spellID": 939,
+          "mode": "healing"
+        },
+        {
+          "spellID": 943,
+          "mode": "spell"
+        },
+        {
+          "spellID": 959,
+          "mode": "healing"
+        },
+        {
+          "spellID": 970,
+          "mode": "spell"
+        },
+        {
+          "spellID": 992,
+          "mode": "spell"
+        },
+        {
+          "spellID": 1058,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1088,
+          "mode": "spell"
+        },
+        {
+          "spellID": 1094,
+          "mode": "spell"
+        },
+        {
+          "spellID": 1106,
+          "mode": "spell"
+        },
+        {
+          "spellID": 1430,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1978,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 2054,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2055,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2060,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2061,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2090,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2091,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2136,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2137,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2138,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2767,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2912,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2941,
+          "mode": "spell"
+        },
+        {
+          "spellID": 3044,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 3140,
+          "mode": "spell"
+        },
+        {
+          "spellID": 3627,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5143,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5144,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5145,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5176,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5177,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5178,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5179,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5180,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5185,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5186,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5187,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5188,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5189,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6041,
+          "mode": "spell"
+        },
+        {
+          "spellID": 6063,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6064,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6074,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6075,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6076,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6077,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6078,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6222,
+          "mode": "spell"
+        },
+        {
+          "spellID": 6223,
+          "mode": "spell"
+        },
+        {
+          "spellID": 6778,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6780,
+          "mode": "spell"
+        },
+        {
+          "spellID": 7322,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 7641,
+          "mode": "spell"
+        },
+        {
+          "spellID": 7648,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8005,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8400,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8401,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8402,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8406,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 8407,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 8408,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 8412,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8413,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8416,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8417,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8903,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8905,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8910,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8921,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8924,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8925,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8926,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8927,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8928,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8929,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8936,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8938,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8939,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8940,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8941,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8949,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8950,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8951,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9472,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9473,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9474,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9750,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9758,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9833,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9834,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9835,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9839,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9840,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9841,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9856,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9857,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9858,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9875,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9876,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9888,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9889,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9912,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10148,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10149,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10150,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10151,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10179,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 10180,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 10181,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 10197,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10199,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10211,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10212,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10391,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10392,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10395,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10396,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10892,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10893,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10894,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10915,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10916,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10917,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10927,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10928,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10929,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10963,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10964,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10965,
+          "mode": "healing"
+        },
+        {
+          "spellID": 11659,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11660,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11661,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11665,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11667,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11668,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11671,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11672,
+          "mode": "spell"
+        },
+        {
+          "spellID": 13549,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13550,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13551,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13552,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13553,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13554,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13555,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14281,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14282,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14283,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14284,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14285,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14286,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14287,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14914,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15207,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15208,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15261,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15262,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15263,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15264,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15265,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15266,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15267,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15407,
+          "mode": "spell"
+        },
+        {
+          "spellID": 17311,
+          "mode": "spell"
+        },
+        {
+          "spellID": 17312,
+          "mode": "spell"
+        },
+        {
+          "spellID": 17313,
+          "mode": "spell"
+        },
+        {
+          "spellID": 17314,
+          "mode": "spell"
+        },
+        {
+          "spellID": 18807,
+          "mode": "spell"
+        },
+        {
+          "spellID": 23881,
+          "mode": "landed"
+        },
+        {
+          "spellID": 23892,
+          "mode": "landed"
+        },
+        {
+          "spellID": 23893,
+          "mode": "landed"
+        },
+        {
+          "spellID": 23894,
+          "mode": "landed"
+        },
+        {
+          "spellID": 25295,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 25297,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25298,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25299,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25304,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 25306,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25307,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25309,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25311,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25314,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25315,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25345,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25357,
+          "mode": "healing"
+        },
+        {
+          "spellID": 429151,
+          "mode": "scaling-only"
+        }
+      ]
+    },
+    {
+      "version": "1.60.1",
+      "build": "70938",
+      "interface": 16001,
+      "ranks": [
+        {
+          "spellID": 116,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 133,
+          "mode": "spell"
+        },
+        {
+          "spellID": 139,
+          "mode": "healing"
+        },
+        {
+          "spellID": 143,
+          "mode": "spell"
+        },
+        {
+          "spellID": 145,
+          "mode": "spell"
+        },
+        {
+          "spellID": 172,
+          "mode": "spell"
+        },
+        {
+          "spellID": 205,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 331,
+          "mode": "healing"
+        },
+        {
+          "spellID": 332,
+          "mode": "healing"
+        },
+        {
+          "spellID": 348,
+          "mode": "spell"
+        },
+        {
+          "spellID": 403,
+          "mode": "spell"
+        },
+        {
+          "spellID": 529,
+          "mode": "spell"
+        },
+        {
+          "spellID": 547,
+          "mode": "healing"
+        },
+        {
+          "spellID": 548,
+          "mode": "spell"
+        },
+        {
+          "spellID": 589,
+          "mode": "spell"
+        },
+        {
+          "spellID": 594,
+          "mode": "spell"
+        },
+        {
+          "spellID": 635,
+          "mode": "healing"
+        },
+        {
+          "spellID": 639,
+          "mode": "healing"
+        },
+        {
+          "spellID": 647,
+          "mode": "healing"
+        },
+        {
+          "spellID": 686,
+          "mode": "spell"
+        },
+        {
+          "spellID": 695,
+          "mode": "spell"
+        },
+        {
+          "spellID": 705,
+          "mode": "spell"
+        },
+        {
+          "spellID": 707,
+          "mode": "spell"
+        },
+        {
+          "spellID": 774,
+          "mode": "healing"
+        },
+        {
+          "spellID": 837,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 913,
+          "mode": "healing"
+        },
+        {
+          "spellID": 915,
+          "mode": "spell"
+        },
+        {
+          "spellID": 939,
+          "mode": "healing"
+        },
+        {
+          "spellID": 943,
+          "mode": "spell"
+        },
+        {
+          "spellID": 959,
+          "mode": "healing"
+        },
+        {
+          "spellID": 970,
+          "mode": "spell"
+        },
+        {
+          "spellID": 992,
+          "mode": "spell"
+        },
+        {
+          "spellID": 1026,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1042,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1058,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1088,
+          "mode": "spell"
+        },
+        {
+          "spellID": 1094,
+          "mode": "spell"
+        },
+        {
+          "spellID": 1106,
+          "mode": "spell"
+        },
+        {
+          "spellID": 1430,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1978,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 2054,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2055,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2060,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2061,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2090,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2091,
+          "mode": "healing"
+        },
+        {
+          "spellID": 2136,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2137,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2138,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2767,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2912,
+          "mode": "spell"
+        },
+        {
+          "spellID": 2941,
+          "mode": "spell"
+        },
+        {
+          "spellID": 3044,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 3140,
+          "mode": "spell"
+        },
+        {
+          "spellID": 3472,
+          "mode": "healing"
+        },
+        {
+          "spellID": 3627,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5143,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5144,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5145,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5176,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5177,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5178,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5179,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5180,
+          "mode": "spell"
+        },
+        {
+          "spellID": 5185,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5186,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5187,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5188,
+          "mode": "healing"
+        },
+        {
+          "spellID": 5189,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6041,
+          "mode": "spell"
+        },
+        {
+          "spellID": 6063,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6064,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6074,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6075,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6076,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6077,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6078,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6222,
+          "mode": "spell"
+        },
+        {
+          "spellID": 6223,
+          "mode": "spell"
+        },
+        {
+          "spellID": 6778,
+          "mode": "healing"
+        },
+        {
+          "spellID": 6780,
+          "mode": "spell"
+        },
+        {
+          "spellID": 7322,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 7641,
+          "mode": "spell"
+        },
+        {
+          "spellID": 7648,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8004,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8005,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8008,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8010,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8400,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8401,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8402,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8406,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 8407,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 8408,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 8412,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8413,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8416,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8417,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8903,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8905,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8910,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8921,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8924,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8925,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8926,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8927,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8928,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8929,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8936,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8938,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8939,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8940,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8941,
+          "mode": "healing"
+        },
+        {
+          "spellID": 8949,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8950,
+          "mode": "spell"
+        },
+        {
+          "spellID": 8951,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9472,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9473,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9474,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9750,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9758,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9833,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9834,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9835,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9839,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9840,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9841,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9856,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9857,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9858,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9875,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9876,
+          "mode": "spell"
+        },
+        {
+          "spellID": 9888,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9889,
+          "mode": "healing"
+        },
+        {
+          "spellID": 9912,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10148,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10149,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10150,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10151,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10179,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 10180,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 10181,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 10197,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10199,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10211,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10212,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10328,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10329,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10391,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10392,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10395,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10396,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10466,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10467,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10468,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10892,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10893,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10894,
+          "mode": "spell"
+        },
+        {
+          "spellID": 10915,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10916,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10917,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10927,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10928,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10929,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10963,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10964,
+          "mode": "healing"
+        },
+        {
+          "spellID": 10965,
+          "mode": "healing"
+        },
+        {
+          "spellID": 11659,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11660,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11661,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11665,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11667,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11668,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11671,
+          "mode": "spell"
+        },
+        {
+          "spellID": 11672,
+          "mode": "spell"
+        },
+        {
+          "spellID": 13549,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13550,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13551,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13552,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13553,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13554,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 13555,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14281,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14282,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14283,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14284,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14285,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14286,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14287,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 14914,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15207,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15208,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15261,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15262,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15263,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15264,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15265,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15266,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15267,
+          "mode": "spell"
+        },
+        {
+          "spellID": 15407,
+          "mode": "spell"
+        },
+        {
+          "spellID": 17311,
+          "mode": "spell"
+        },
+        {
+          "spellID": 17312,
+          "mode": "spell"
+        },
+        {
+          "spellID": 17313,
+          "mode": "spell"
+        },
+        {
+          "spellID": 17314,
+          "mode": "spell"
+        },
+        {
+          "spellID": 18807,
+          "mode": "spell"
+        },
+        {
+          "spellID": 19750,
+          "mode": "healing"
+        },
+        {
+          "spellID": 19939,
+          "mode": "healing"
+        },
+        {
+          "spellID": 19940,
+          "mode": "healing"
+        },
+        {
+          "spellID": 19941,
+          "mode": "healing"
+        },
+        {
+          "spellID": 19942,
+          "mode": "healing"
+        },
+        {
+          "spellID": 19943,
+          "mode": "healing"
+        },
+        {
+          "spellID": 23881,
+          "mode": "landed"
+        },
+        {
+          "spellID": 23892,
+          "mode": "landed"
+        },
+        {
+          "spellID": 23893,
+          "mode": "landed"
+        },
+        {
+          "spellID": 23894,
+          "mode": "landed"
+        },
+        {
+          "spellID": 25292,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25295,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 25297,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25298,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25299,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25304,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 25306,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25307,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25309,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25311,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25314,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25315,
+          "mode": "healing"
+        },
+        {
+          "spellID": 25345,
+          "mode": "spell"
+        },
+        {
+          "spellID": 25357,
+          "mode": "healing"
+        },
+        {
+          "spellID": 408120,
+          "mode": "healing"
+        },
+        {
+          "spellID": 408521,
+          "mode": "healing"
+        },
+        {
+          "spellID": 429151,
+          "mode": "scaling-only"
+        },
+        {
+          "spellID": 1238214,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1238215,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1239242,
+          "mode": "healing"
+        },
+        {
+          "spellID": 1239243,
+          "mode": "healing"
+        }
+      ]
+    }
+  ],
+  "sourceHashes": {
+    "SpellPowerModels.lua": "789ffcfc06f9aad14fd1a3e225dbf1a3dd126bbb8347f02a7577819e405af2a6",
+    "SpellModifiers.lua": "46d3efccffe3e05273f5244ecb4cce288ab314a47034e81d62b831b36e40455b",
+    "SpellEstimates.lua": "9c5699973337391ddc9872793af115a2703a9607f8b0604284d42798ae82f6ad",
+    "DamageTips.lua": "61845652aaf5d28408bb5c85523a7a9855e7b0521d3d12db2c8100cb0a7c08d4",
+    "tools/validate_forever_models.py": "171a1bf67844aa269248dee4a67ee0b2f45a19d56d872104b1bf2dcf22a917d0",
+    "tools/validate_forever_combat_log.py": "8cff277162ffe6372b8462040b777ed98402f32fe7ab88f58127167f6b71d3bd",
+    "docs/forever-70938-validation.md": "4bc56001b62e91299c47e7fde06d7b50096920c1abd93cb7d3a2f8c75ecacc22",
+    "docs/wild-growth-70938-validation.md": "f666e90ffd60d5413c31ffeb68a4c995f5301e18ce48c369f841c4ae1a43667b",
+    "docs/forever-combat-log-validator.md": "7f8c6aa84b83f2af331e7a79fff4f5adb79dc246834001ae482840c9d624bfa7",
+    "docs/held-tooltip-inputs.md": "a8ad5ceb278367b5e212d1b1ebd7104ce7f38387e03e8d0a50e15e77d14af502",
+    "docs/german-parser.md": "e7d4399ae2e33c0f96aee64352bd62d7778326822afee12f8b1c608a9bee790a",
+    "tests/german.lua": "410a32414c844bb504ccf42c99e3c2ce347b8f797666ade886b0a31963450e70"
+  },
+  "evidence": {
+    "modelInputs": {
+      "status": "historical-documented-client-data-review",
+      "record": "docs/forever-70938-validation.md",
+      "csvFingerprints": "23 tables per build recorded in that document",
+      "rawCorpus": "not bundled; replay requires explicitly supplied matching exports",
+      "replay": "tools/validate_forever_models.py --lua LUA --baseline DIR70888 --live DIR70938 --check"
+    },
+    "additional70938Models": {
+      "records": [
+        "docs/wild-growth-70938-validation.md",
+        "docs/forever-combat-log-validator.md"
+      ],
+      "captureStatus": "capture procedure and synthetic validator fixtures; no new live capture certification"
+    },
+    "parser": {
+      "locales": [
+        "enUS",
+        "enGB",
+        "deDE"
+      ],
+      "deDE": "bounded original synthetic fixtures; actual client wording not certified",
+      "record": "docs/german-parser.md"
+    },
+    "nativeTooltipReplay": {
+      "version": "1.60.1",
+      "build": "70938",
+      "interface": 16001,
+      "record": "docs/held-tooltip-inputs.md",
+      "status": "primary client source contract plus offline mocks; no new live taint measurement"
+    }
+  }
+}

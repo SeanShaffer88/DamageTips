@@ -1,0 +1,7 @@
+# Versioned certification inventory
+
+`certification-v1.json` is a source-controlled, offline inventory of exact build tuples, rank IDs and output modes read from the runtime model authority. Run `python -B tools/validate_certification.py --lua <trusted-Lua-5.1>`; CI executes this check. Unknown build/version/interface tuples and unknown spell IDs are also exercised through the real Lua model resolver. A missing rank, extra rank, source/evidence hash drift or unknown schema fails the check.
+
+After a reviewed change, `--write` refreshes the inventory. This records the current source; it does not approve new coefficients or create client capture evidence. Hashes cover UTF-8 text with CRLF normalized to LF so Windows and CI agree. The manifest is developer evidence and is excluded from the install ZIP; the existing exact-build runtime gates remain the shipping authority.
+
+Evidence is separated into historical 70888/70938 client-data review, additional 70938 model provenance/capture procedures, parser fixtures and the native tooltip replay contract. Historical CSV fingerprints remain in the linked review. Raw CSV exports and real combat-log captures are not bundled; the separate replay validators require explicitly supplied files. The new deDE coverage is synthetic and bounded, with no claim of verified German client wording. The manifest is a drift gate, not a signature or an independent numerical proof.
