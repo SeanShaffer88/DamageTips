@@ -121,7 +121,10 @@ function widget:GetText() return self.text end
 function widget:ClearFocus() self.focused = false end
 function widget:SetChecked(value) self.checked = value end
 function widget:GetChecked() return self.checked end
-function widget:Hide() self.visible = false end
+function widget:Hide()
+    self.visible = false
+    if self.scripts.OnHide then self.scripts.OnHide(self) end
+end
 function widget:Show() self.visible = true end
 function widget:SetShown(value) self.visible = value end
 function widget:IsShown() return self.visible end
@@ -207,6 +210,41 @@ expect(not minimapButton:IsShown(), "partial import hides minimap with no config
 command("reset")
 expect(minimapButton:IsShown() and DamageTipsDB.minimapAngle == 90 and DamageTipsDB.spellRules["234"] == 12,
     "reset syncs minimap and retains angle and rules with no config frame")
+expect(minimapButton.scripts.OnUpdate == nil, "idle minimap has no per-frame callback")
+local cursorX, cursorY = 100, 120
+function Minimap:GetCenter() return 50, 50 end
+function Minimap:GetEffectiveScale() return 2 end
+function GetCursorPosition() return cursorX, cursorY end
+minimapButton.scripts.OnDragStart(minimapButton)
+expect(minimapButton.dragging and type(minimapButton.scripts.OnUpdate) == "function",
+    "starting minimap drag installs its update callback")
+minimapButton.scripts.OnUpdate(minimapButton)
+expect(math.abs(DamageTipsDB.minimapAngle - 90) < 0.001,
+    "drag update uses scaled cursor coordinates")
+cursorX, cursorY = 120, 100
+minimapButton.scripts.OnUpdate(minimapButton)
+expect(math.abs(DamageTipsDB.minimapAngle) < 0.001 and minimapButton.point[4] > 79,
+    "drag update moves the button and saves the angle")
+minimapButton.scripts.OnDragStop(minimapButton)
+minimapButton.scripts.OnDragStop(minimapButton)
+expect(not minimapButton.dragging and minimapButton.scripts.OnUpdate == nil,
+    "repeated minimap drag stop removes the callback")
+minimapButton.scripts.OnDragStart(minimapButton)
+minimapButton:Hide()
+expect(not minimapButton.dragging and minimapButton.scripts.OnUpdate == nil,
+    "hiding during minimap drag cancels updates")
+minimapButton:Show()
+expect(minimapButton.scripts.OnUpdate == nil, "showing after hidden drag stays idle")
+minimapButton.scripts.OnDragStart(minimapButton)
+local savedMinimap = Minimap
+Minimap = nil
+minimapButton.scripts.OnUpdate(minimapButton)
+expect(not minimapButton.dragging and minimapButton.scripts.OnUpdate == nil,
+    "losing minimap during drag removes the callback")
+minimapButton.scripts.OnDragStart(minimapButton)
+expect(minimapButton.scripts.OnUpdate == nil, "missing minimap rejects drag start")
+Minimap = savedMinimap
+command("import DT1;minimapAngle=90")
 command("import DT1;showMinimap=0;manaMode=3;spellRules=")
 expect(not minimapButton:IsShown() and next(DamageTipsDB.spellRules) == nil,
     "empty rules field clears rules and partial import preserves other fields")
