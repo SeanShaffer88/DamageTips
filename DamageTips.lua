@@ -782,8 +782,27 @@ dataFrame:RegisterEvent("SPELL_TEXT_UPDATE")
 dataFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
 dataFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 dataFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+-- Exact 70938 event contracts are recorded in docs/held-tooltip-inputs.md.
+local playerInputEvents = { UNIT_STATS = true, UNIT_ATTACK_POWER = true,
+    UNIT_RANGED_ATTACK_POWER = true, UNIT_SPELL_HASTE = true }
+local globalInputEvents = { SPELL_POWER_CHANGED = true, COMBAT_RATING_UPDATE = true,
+    PLAYER_EQUIPMENT_CHANGED = true, PLAYER_TALENT_UPDATE = true }
+for event in pairs(playerInputEvents) do dataFrame:RegisterEvent(event) end
+for event in pairs(globalInputEvents) do dataFrame:RegisterEvent(event) end
+dataFrame:RegisterEvent("UNIT_POWER_UPDATE")
+dataFrame:RegisterEvent("UNIT_MAXPOWER")
+dataFrame:RegisterEvent("UNIT_AURA")
 dataFrame:SetScript("OnEvent", function(_, event, spellID, success)
-    if event == "SPELLS_CHANGED" then
+    if globalInputEvents[event] or (playerInputEvents[event] and not IsSecret(spellID) and spellID == "player")
+        or ((event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER")
+            and not IsSecret(spellID) and spellID == "player" and not IsSecret(success) and success == "MANA")
+        or (event == "UNIT_AURA" and not IsSecret(spellID) and (spellID == "player" or spellID == "target")) then
+        -- Descriptions can contain stat-scaled amounts, so invalidate public text
+        -- along with derived estimates. Rebuilds share the existing queued callback.
+        if event == "PLAYER_TALENT_UPDATE" then rankIndexDirty = true end
+        if DB then InvalidateCache() end
+        QueueTooltipRefresh(cur.spellID)
+    elseif event == "SPELLS_CHANGED" then
         rankIndexDirty = true
         if DB then InvalidateCache() end
         QueueTooltipRefresh(cur.spellID)
