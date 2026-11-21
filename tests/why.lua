@@ -170,5 +170,8 @@ expect(requests == 0 and tooltipCalls == 0 and DamageTipsDB.showExpectedThroughp
 
 locale = "deDE"
 loadAddon()
-run("why 2136", "English spell descriptions")
+run("why 2136", "does not match the estimate model")
+locale = "frFR"
+loadAddon()
+run("why 2136", "supported English or German")
 realPrint("DamageTips estimate explanation mocks passed (" .. checks .. " assertions).")

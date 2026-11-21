@@ -7,6 +7,7 @@ local owner, activeID, activeType = {}, 1001, "spell"
 local primary, processing
 local post, posts, setterHooks, addCount, showCount, sourceReads = nil, 0, 0, 0, 0, 0
 local now, isShown, forbidden = 100, true, false
+local maximumMana = 1000
 local shiftDown, target, combat = false, false, false
 local bookSpellID = 1001
 local build = "70938"
@@ -24,7 +25,7 @@ function GetLocale() return "enUS" end
 function GetBuildInfo() return "1.60.1", build, "Nov 2026", 16001 end
 function IsShiftKeyDown() return shiftDown end
 function InCombatLockdown() return combat end
-function UnitPowerMax() return 1000 end
+function UnitPowerMax() return maximumMana end
 function UnitExists() return target end
 function UnitCanAttack() return target end
 function UnitIsPlayer() return false end
@@ -380,5 +381,43 @@ stockAction:UpdateTooltip() -- Blizzard's periodic action-tooltip update
 expect(count("Expected DPS (target L63, level only): 83.0") == 1 and count("Mana cost") == 1,
     "Blizzard's native action refresh works in lockdown with one current estimate and mana line")
 expect(#errors == 2, "refreshing stock tooltips produced no guarded Lua errors")
+
+combat, owner, bookSpellID = false, stockBookItem.Button, 2136
+stockBookItem:ShowSpellBookTooltip()
+rebuilds = bookRebuilds
+maximumMana = 2000
+fire("UNIT_POWER_UPDATE", "player", "MANA")
+fire("UNIT_MAXPOWER", "player", "MANA")
+fire("UNIT_STATS", "player")
+fire("SPELL_POWER_CHANGED")
+fire("COMBAT_RATING_UPDATE")
+fire("PLAYER_EQUIPMENT_CHANGED", 16, true)
+fire("PLAYER_TALENT_UPDATE")
+fire("UNIT_AURA", "player", secret)
+fire("UNIT_AURA", "target", secret)
+expect(bookRebuilds == rebuilds, "input events never rebuild synchronously")
+nextFrame()
+expect(bookRebuilds == rebuilds + 1 and count("5.0%") == 1,
+    "stat, mana, talent and aura bursts refresh current inputs once")
+rebuilds = bookRebuilds
+fire("UNIT_STATS", "party1")
+fire("UNIT_POWER_UPDATE", "player", "RAGE")
+fire("UNIT_MAXPOWER", secret, "MANA")
+fire("UNIT_AURA", "party1", secret)
+nextFrame()
+expect(bookRebuilds == rebuilds, "unrelated and secret input scopes are ignored")
+combat = true
+fire("UNIT_AURA", "player", secret)
+nextFrame()
+expect(bookRebuilds == rebuilds, "input-driven native setters defer in combat")
+combat = false
+fire("PLAYER_REGEN_ENABLED")
+nextFrame()
+expect(bookRebuilds == rebuilds + 1, "input-driven refresh resumes once after combat")
+rebuilds = bookRebuilds
+fire("UNIT_STATS", "player")
+scripts.OnHide(GameTooltip)
+nextFrame()
+expect(bookRebuilds == rebuilds and #errors == 2, "hidden input refresh is discarded without errors")
 
 output("DamageTips tooltip refresh regressions passed (" .. checks .. " assertions).")
