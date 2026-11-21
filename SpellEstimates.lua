@@ -326,7 +326,9 @@ do
     local units = { sek = true, ["sek."] = true, sekunde = true, sekunden = true }
     local function number(text)
         if not text then return nil end
-        text = text:gsub("^ +", ""):gsub(" +$", ""):gsub(" ", ".")
+        text = text:gsub("^ +", ""):gsub(" +$", "")
+        if text:find(" ", 1, true) and text:find(".", 1, true) then return nil end
+        text = text:gsub(" ", ".")
         local whole, decimal = text:match("^(.-),(%d+)$")
         whole = whole or text
         if whole:find(".", 1, true) then
@@ -355,6 +357,7 @@ do
         text = text:gsub("Ä", "ä"):gsub("Ö", "ö"):gsub("Ü", "ü"):lower()
             :gsub("\194\160", " "):gsub("\226\128\175", " "):gsub("–", "-"):gsub("—", "-")
             :gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+            :gsub("körperlichen schaden", "körperlichenschaden")
         local value, school, low, high, total, span, unit, interval, intervalUnit
         local heal = text:match("^heilt ein verbündetes ziel um " .. rangeAmount .. " gesundheit%.$")
             or text:match("^heilt ein befreundetes ziel um " .. rangeAmount .. " gesundheit%.$")

@@ -25,9 +25,11 @@ t = parse("Heilt ein verbündetes Ziel um 90 bis 110 Gesundheit und im Verlauf v
 check(t.healing.direct == 100 and t.healing.periodic == 140 and t.effect, "mixed heal")
 t = parse("Verursacht 90 bis 110 Feuerschaden und im Verlauf von 4 Sek. zusätzlich 20 Feuerschaden.", m[133])
 check(t.damage.direct == 100 and t.damage.periodic == 20 and t.effect, "mixed damage")
+t = parse("Verursacht 100 körperlichen Schaden.")
+check(t.damage.direct == 100 and t.damage.school == "physical", "spaced physical damage")
 t = parse("Absorbiert 500 Schaden.")
 check(t.absorb == 500 and not t.damage, "absorb")
-for _, value in ipairs({ "12.34", "1,2,3", "20 bis 10", "-5", "1.0000" }) do
+for _, value in ipairs({ "12.34", "1,2,3", "20 bis 10", "-5", "1.0000", "1.234 567", "1 234.567" }) do
     check(parse("Verursacht " .. value .. " Feuerschaden.", m[2136]).status == "unsupported", "malformed amount " .. value)
 end
 check(parse("Verursacht 100 Feuerschaden. Unbekannte zusätzliche Wirkung.", m[2136]).status == "unsupported", "unknown clause")
