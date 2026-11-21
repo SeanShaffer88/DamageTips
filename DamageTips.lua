@@ -1765,10 +1765,15 @@ BuildMinimapButton = function()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:SetScript("OnClick", function() if DB then ToggleConfig() end end)
-    b:SetScript("OnDragStart", function(self) self.dragging = true end)
-    b:SetScript("OnDragStop", function(self) self.dragging = false end)
-    b:SetScript("OnUpdate", function(self)
-        if not self.dragging or not DB then return end
+    local function StopDragging(self)
+        self.dragging = false
+        self:SetScript("OnUpdate", nil)
+    end
+    local function UpdateDrag(self)
+        if not DB or not Minimap then
+            StopDragging(self)
+            return
+        end
         local mx, my = Minimap:GetCenter()
         local cx, cy = GetCursorPosition()
         local scale = (Minimap.GetEffectiveScale and Minimap:GetEffectiveScale()) or 1
@@ -1776,7 +1781,14 @@ BuildMinimapButton = function()
         local atan2 = math.atan2 or math.atan
         DB.minimapAngle = math.deg(atan2(cy - my, cx - mx)) % 360
         PositionMinimapButton()
+    end
+    b:SetScript("OnDragStart", function(self)
+        if not DB or not Minimap then return end
+        self.dragging = true
+        self:SetScript("OnUpdate", UpdateDrag)
     end)
+    b:SetScript("OnDragStop", StopDragging)
+    b:SetScript("OnHide", StopDragging)
     minimapBtn = b
     RefreshMinimapButton()
     return true
