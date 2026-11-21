@@ -50,6 +50,24 @@ class CertificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "evidence scope"):
             cert.validate(self.data, self.actual)
 
+    def test_corpus_hash_drift(self):
+        self.data["corpusHashes"]["70888"]["Spell.csv"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "fingerprint drift"):
+            cert.validate(self.data, self.actual)
+
+    def test_missing_corpus(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(FileNotFoundError):
+                cert.preflight(Path(directory), {"Spell.csv": "0" * 64})
+
+    def test_wrong_and_matching_corpus(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "Spell.csv"
+            path.write_bytes(b"original synthetic CSV fixture\n")
+            with self.assertRaisesRegex(ValueError, "hash mismatch"):
+                cert.preflight(Path(directory), {"Spell.csv": "0" * 64})
+            cert.preflight(Path(directory), {"Spell.csv": cert.hashlib.sha256(path.read_bytes()).hexdigest()})
+
     def test_crlf_hash_is_stable(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "fixture.txt"

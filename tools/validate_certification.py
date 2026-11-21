@@ -7,14 +7,17 @@ not live-client correctness. Historical CSV replay remains a separate validator.
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs" / "certification-v1.json"
 SOURCES = (
     "SpellPowerModels.lua", "SpellModifiers.lua", "SpellEstimates.lua", "DamageTips.lua",
     "tools/validate_forever_models.py", "tools/validate_forever_combat_log.py",
+    "tools/validate_certification.py",
     "docs/forever-70938-validation.md", "docs/wild-growth-70938-validation.md",
     "docs/forever-combat-log-validator.md", "docs/held-tooltip-inputs.md",
     "docs/german-parser.md", "tests/german.lua",
@@ -62,6 +65,26 @@ def coverage(lua, root=ROOT):
     return builds
 
 
+def fingerprints(root=ROOT):
+    record = (root / "docs/forever-70938-validation.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^ +([A-Za-z]+) +([a-f0-9]{64}) +([a-f0-9]{64}) *$", record, re.MULTILINE)
+    if len(rows) != 23 or len({row[0] for row in rows}) != 23:
+        raise ValueError("historical fingerprint record must contain exactly 23 unique tables")
+    return {build: {row[0] + ".csv": row[index] for row in rows}
+            for build, index in (("70888", 1), ("70938", 2))}
+
+
+def preflight(directory, expected):
+    for name, wanted in expected.items():
+        with (directory / name).open("rb") as source:
+            hasher = hashlib.sha256()
+            for block in iter(lambda: source.read(1024 * 1024), b""):
+                hasher.update(block)
+            actual = hasher.hexdigest()
+        if actual != wanted:
+            raise ValueError(f"historical corpus hash mismatch: {name}")
+
+
 def validate(data, actual, root=ROOT):
     if data.get("schemaVersion") != 1 or data.get("hashFormat") != "sha256-text-lf":
         raise ValueError("unsupported certification schema/hash format")
@@ -70,6 +93,8 @@ def validate(data, actual, root=ROOT):
         for b in ("70888", "70938")
     ]:
         raise ValueError("exact-build rank coverage differs from runtime authority")
+    if data.get("corpusHashes") != fingerprints(root):
+        raise ValueError("historical corpus fingerprint drift")
     expected = {name: digest(root / name) for name in SOURCES}
     if data.get("sourceHashes") != expected:
         raise ValueError("certification source/evidence hash drift; review and refresh inventory")
@@ -107,16 +132,29 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lua", required=True, help="Trusted installed Lua 5.1 executable")
     parser.add_argument("--write", action="store_true", help="Refresh inventory after reviewing source/evidence changes")
+    parser.add_argument("--baseline", type=Path, help="Explicit historical 70888 CSV directory (requires --live)")
+    parser.add_argument("--live", type=Path, help="Explicit historical 70938 CSV directory (requires --baseline)")
     args = parser.parse_args()
+    if (args.baseline is None) != (args.live is None):
+        parser.error("--baseline and --live must be supplied together")
     actual = coverage(args.lua)
     if args.write:
         data = {"schemaVersion": 1, "hashFormat": "sha256-text-lf",
                 "builds": [{"version": "1.60.1", "build": b, "interface": 16001, "ranks": actual[b]}
                            for b in ("70888", "70938")],
-                "sourceHashes": {name: digest(ROOT / name) for name in SOURCES}, "evidence": EVIDENCE}
+                "sourceHashes": {name: digest(ROOT / name) for name in SOURCES},
+                "corpusHashes": fingerprints(), "evidence": EVIDENCE}
         MANIFEST.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    count = validate(json.loads(MANIFEST.read_text(encoding="utf-8")), actual)
-    print(f"Certification inventory passed: {count} build/rank entries; historical corpus replay not performed")
+    data = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    count = validate(data, actual)
+    if args.baseline is not None:
+        preflight(args.baseline, data["corpusHashes"]["70888"])
+        preflight(args.live, data["corpusHashes"]["70938"])
+        subprocess.run([sys.executable, "-B", str(ROOT / "tools/validate_forever_models.py"),
+                        "--lua", args.lua, "--baseline", str(args.baseline), "--live", str(args.live), "--check"],
+                       check=True, timeout=120)
+    replay = "passed" if args.baseline is not None else "not performed"
+    print(f"Certification inventory passed: {count} build/rank entries; historical corpus replay {replay}")
 
 
 if __name__ == "__main__":
