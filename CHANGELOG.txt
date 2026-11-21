@@ -1,3 +1,9 @@
+1.6.6
+- Run the minimap button's per-frame position update only while dragging.
+- Offline Lua regression suites, Python tests, and install ZIP verification pass.
+  In-game validation is assumed for this release and was not performed
+  during release preparation.
+
 1.6.5
 - Add an optional Expected DPS or HPS report field to the GitHub bug form
   for output from /dtips why <spellID>.
